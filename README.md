@@ -18,9 +18,9 @@ Tres mods que hacen a Claude Code más seguro y más transparente en el día a d
 En una sesión de Claude Code en la terminal, instala los que quieras:
 
 ```
-/plugin install guardia-produccion --marketplace <owner>/<repo>
-/plugin install detector-secretos --marketplace <owner>/<repo>
-/plugin install contexto-costo --marketplace <owner>/<repo>
+/plugin install guardia-produccion --marketplace Vincitorecode/mods-equipo
+/plugin install detector-secretos --marketplace Vincitorecode/mods-equipo
+/plugin install contexto-costo --marketplace Vincitorecode/mods-equipo
 ```
 
 La primera vez te pregunta si quieres agregar el marketplace: responde `y` y elige el scope **user** (para que funcione en todos tus proyectos).
@@ -28,7 +28,7 @@ La primera vez te pregunta si quieres agregar el marketplace: responde `y` y eli
 Si el repo no está en GitHub (GitLab, Bitbucket, servidor interno), agrégalo con su URL de git y después instala:
 
 ```bash
-claude plugin marketplace add https://gitlab.tuempresa.com/equipo/mods-equipo.git
+claude plugin marketplace add https://github.com/Vincitorecode/mods-equipo.git
 claude plugin install guardia-produccion@mods-equipo
 claude plugin install detector-secretos@mods-equipo
 claude plugin install contexto-costo@mods-equipo
