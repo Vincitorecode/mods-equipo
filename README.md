@@ -34,6 +34,8 @@ claude plugin install detector-secretos@mods-equipo
 claude plugin install contexto-costo@mods-equipo
 ```
 
+Si al instalar dice que hay opciones sin configurar, no pasa nada: cada mod usa sus valores por defecto hasta que los cambies.
+
 Para confirmar que cargaron, escribe `/plugin` en Claude Code: debajo de las pestañas verás algo como `3 mods active · guardia-produccion, detector-secretos, contexto-costo`.
 
 ## Actualizar, desactivar o desinstalar
