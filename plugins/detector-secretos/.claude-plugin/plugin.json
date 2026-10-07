@@ -1,7 +1,7 @@
 {
   "name": "detector-secretos",
-  "version": "0.1.0",
-  "description": "Revisa lo que Claude escribe en archivos y lo que va a commitear, y se detiene si encuentra API keys, tokens, llaves privadas o contraseñas.",
+  "version": "0.2.0",
+  "description": "Revisa lo que Claude escribe y lo que va a commitear, y se detiene si encuentra API keys, tokens, llaves privadas o contraseñas; /secretos muestra el historial.",
   "author": {
     "name": "Victor Tinoco"
   },
@@ -22,5 +22,6 @@
       "description": "Expresión regular sobre la ruta. Por defecto los .env locales (no los .env.example).",
       "default": "(^|/)\\.env(\\.(local|development|test))?$"
     }
-  }
+  },
+  "types": "./types/index.d.ts"
 }

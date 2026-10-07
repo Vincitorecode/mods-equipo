@@ -1,7 +1,7 @@
 {
   "name": "guardia-produccion",
-  "version": "0.1.0",
-  "description": "Detiene comandos riesgosos (deploys, migraciones, borrados, force push, kubectl en prod) y pide confirmación antes de ejecutarlos.",
+  "version": "0.2.0",
+  "description": "Detiene comandos riesgosos (deploys, migraciones, borrados, force push, kubectl en prod) y pide confirmación; /guardia muestra lo que vigila y lo que detuvo.",
   "author": {
     "name": "Victor Tinoco"
   },
@@ -18,5 +18,6 @@
       "description": "Expresiones regulares adicionales separadas por ;; (ej. ./scripts/deploy.sh;;make release).",
       "default": ""
     }
-  }
+  },
+  "types": "./types/index.d.ts"
 }

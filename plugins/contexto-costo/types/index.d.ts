@@ -26,6 +26,8 @@ declare module 'claude-code' {
       lecturas: Lectura[]
       limites: Limite[]
       alertado: number
+      /** La lectura más reciente (también la del arranque, antes del primer turno). */
+      actual: Lectura | null
     }
   }
 }

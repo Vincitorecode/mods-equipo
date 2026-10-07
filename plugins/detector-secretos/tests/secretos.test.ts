@@ -100,3 +100,21 @@ describe('en Claude Code', () => {
     expect(r.deny).toBeUndefined()
   })
 })
+
+describe('interfaz', () => {
+  // Clave de prueba armada por partes para que el propio detector no la marque en este archivo.
+  const falsa = 'AKIA' + 'IOSFODNN7EXAMPLQ'
+
+  test('/secretos muestra lo detectado, enmascarado', async ($, on) => {
+    on('clock.now', async () => ({ value: Date.UTC(2026, 9, 7, 15, 30) }))
+    on('tool.call', { tool: 'AskUserQuestion' }, async () => ({ deny: 'cerrado' }))
+    await $.tool.call({ tool: 'Write', file_path: '/p/config.ts', content: `export const k = "${falsa}"` })
+
+    const ui = await $.ui.mount({ plugin: 'detector-secretos', surface: 'terminal', component: 'Pane', requestId: 'detector-secretos', props: { bodyColumns: 80 } } as never)
+    expect(await ui.find({ type: 'Text', text: /Detector de secretos activo/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /bloqueado/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /AKIA…LQ/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: new RegExp(falsa) })).toBeUndefined()
+    await ui.unmount()
+  })
+})

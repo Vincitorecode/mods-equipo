@@ -44,6 +44,9 @@ const PATRONES: Patron[] = [
   },
 ]
 
+/** Los tipos de secreto que se detectan, para mostrarlos. */
+export const TIPOS: string[] = PATRONES.map(p => p.tipo)
+
 /** Valores que son claramente de ejemplo: no cuentan como secreto. */
 const DE_EJEMPLO =
   /^(x+|\*+|\.+|-+|0+)$|xxx|\*\*\*|<[^>]*>|\$\{|\{\{|%\(|(^|[^a-z])(your|tu)[_-]|example|ejemplo|changeme|change[_-]me|placeholder|dummy|fake|redacted|sample|test(ing)?[_-]?(key|token|secret|password)?$|^password$|^secret$|process\.env|os\.environ|getenv|import\.meta\.env/i

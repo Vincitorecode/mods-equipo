@@ -1,6 +1,6 @@
 {
   "name": "contexto-costo",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Banda sobre el prompt con el uso del contexto, el costo de la sesión y del último turno y los límites de uso; /costo abre el detalle.",
   "author": {
     "name": "Victor Tinoco"

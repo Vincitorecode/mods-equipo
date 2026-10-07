@@ -64,6 +64,11 @@ Detiene, entre otros:
 
 Si cancelas, Claude recibe el motivo y la instrucción de no reintentar ni buscar otra vía, sino preguntarte.
 
+**Interfaz:**
+
+- Línea de estado bajo el prompt: `🛡 Guardia activa · k8s: dev-cluster · 2 detenidos (1 cancelado) · /guardia`. Si tu contexto de kubectl es de producción lo marca: `⚠ k8s PROD: prod-mx`.
+- **`/guardia`** abre un panel con el estado (clúster actual, patrón de producción, reglas extra), el historial de comandos detenidos en la sesión con lo que decidiste, y la lista de lo que vigila.
+
 **Configuración** (`/plugin` → el mod → configurar):
 
 - *Patrón de producción*: regex para reconocer producción. Por defecto `prod|production|prd|live`.
@@ -79,6 +84,11 @@ Revisa **antes** de que pase:
 Detecta llaves privadas, llaves de AWS, tokens de GitHub, GitLab, Slack, npm, llaves de Anthropic, OpenAI, Google, Stripe (live), Twilio, SendGrid, JWTs, cadenas de conexión con contraseña y asignaciones como `password = "..."` o `apiKey: "..."`. Ignora placeholders (`changeme`, `your_api_key`, `${VAR}`, `xxx`…) y lecturas de entorno (`process.env`, `os.environ`).
 
 Lo que encuentra se muestra **enmascarado** (`AKIA…LQ (20 caracteres)`), nunca completo.
+
+**Interfaz:**
+
+- Línea de estado bajo el prompt: `🔑 Secretos: preguntar · 1 detectado (1 bloqueado) · /secretos`.
+- **`/secretos`** abre un panel con el modo, los archivos permitidos, cuántas escrituras y commits revisó, y el historial de lo detectado (enmascarado) con lo que pasó.
 
 **Configuración:**
 
@@ -98,7 +108,10 @@ Una línea sobre el prompt que se actualiza al terminar cada turno:
 - El color pasa de verde a amarillo a rojo según te acercas al umbral, y al pasarlo aparece `→ /compact`.
 - Un aviso al cruzar el umbral (80% por defecto) y otro al 95%.
 - Las partes de la línea se ocultan si la terminal es angosta.
+- Aparece desde que abres la sesión, y tiene un botón **Detalle** (tecla `c` con la banda enfocada) que abre el panel.
 - **`/costo`** abre un panel con el detalle: barra de contexto, costo de la sesión y promedio por turno, límites de uso con su hora de reinicio, y una tabla por turno (contexto, costo, herramientas usadas) con el turno más caro resaltado.
+
+**Dónde se ve:** la banda y los paneles se dibujan en la terminal, la app de escritorio (pestaña Code), VS Code y la app móvil. En el navegador (claude.ai/code) no hay banda ni panel, pero `/costo` responde con el mismo resumen en texto (contexto, costo, límites y el turno más caro).
 
 Los costos son los mismos que calcula `/cost` (equivalente en precio de API). Si usas un plan de suscripción no se te cobran así, pero sirven para comparar sesiones y detectar turnos caros.
 

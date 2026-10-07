@@ -87,3 +87,23 @@ describe('en Claude Code', () => {
     expect(String(r.deny ?? r.text)).toContain('Guardia de producción')
   })
 })
+
+describe('interfaz', () => {
+  test('/guardia muestra el comando detenido en el historial', async ($, on) => {
+    on('clock.now', async () => ({ value: Date.UTC(2026, 9, 7, 15, 30) }))
+    on('tool.call', { tool: 'AskUserQuestion' }, async () => ({ deny: 'cerrado' }))
+    await $.tool.call({ tool: 'Bash', command: 'terraform apply -auto-approve' })
+
+    const ui = await $.ui.mount({ plugin: 'guardia-produccion', surface: 'terminal', component: 'Pane', requestId: 'guardia-produccion', props: { bodyColumns: 80 } } as never)
+    expect(await ui.find({ type: 'Text', text: /Guardia activa/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /sin respuesta/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /terraform apply -auto-approve/ })).toBeDefined()
+    await ui.unmount()
+  })
+
+  test('/guardia sin historial lo dice', async $ => {
+    const ui = await $.ui.mount({ plugin: 'guardia-produccion', surface: 'terminal', component: 'Pane', requestId: 'guardia-produccion', props: { bodyColumns: 80 } } as never)
+    expect(await ui.find({ type: 'Text', text: /Nada detenido todavía/ })).toBeDefined()
+    await ui.unmount()
+  })
+})

@@ -20,6 +20,7 @@ const BARRAS = '▁▂▃▄▅▆▇█'
 const lecturas = atom({ plugin: 'contexto-costo', key: 'lecturas' } as const, [] as Lectura[])
 const limites = atom({ plugin: 'contexto-costo', key: 'limites' } as const, [] as Limite[])
 const alertado = atom({ plugin: 'contexto-costo', key: 'alertado' } as const, 0)
+const actual = atom({ plugin: 'contexto-costo', key: 'actual' } as const, null as Lectura | null)
 
 export const register: Register = (on, options) => {
   const umbral = clamp(Number(options.umbralAlerta ?? 80), 10, 99)
@@ -34,12 +35,24 @@ export const register: Register = (on, options) => {
     await $.command.register({ name: 'costo', description: 'Detalle de contexto, costo por turno y límites de uso' })
     const uso = await leerUso($)
     usdAlInicio = uso?.usd ?? 0
+    // La banda se ve desde el arranque, sin esperar al primer turno.
+    if (uso !== undefined) {
+      await update($, actual, () => ({ tokens: uso.tokens, ventana: uso.ventana, porcentaje: uso.porcentaje, usd: uso.usd, usdTurno: 0, herramientas: 0 }))
+      await update($, limites, () => uso.limites)
+    }
     return r
   })
 
+  // Además del panel, responde con un resumen en texto: así /costo sirve donde no se
+  // dibujan paneles (la web en claude.ai/code, Remote Control).
   on('command.run', { command: 'costo' }, async $ => {
-    await $.ui.open({ id: PANEL, title: 'Contexto y costo', closeOnEscape: true })
-    return { text: 'Panel de contexto y costo abierto.' }
+    const uso = await leerUso($)
+    try {
+      await $.ui.open({ id: PANEL, title: 'Contexto y costo', closeOnEscape: true })
+    } catch {
+      // Superficie sin paneles: queda el resumen.
+    }
+    return { text: uso === undefined ? 'Aún no hay datos de contexto y costo.' : resumen(uso, await read($, lecturas), umbral) }
   })
 
   on('prompt.submit', async ($, e, next) => {
@@ -69,6 +82,7 @@ export const register: Register = (on, options) => {
       herramientas,
     }
     usdAlInicio = uso.usd
+    await update($, actual, () => lectura)
     await update($, lecturas, lista => [...lista.filter(l => l.tokens > 0), lectura].slice(-HISTORIA))
     await update($, limites, () => uso.limites)
 
@@ -90,11 +104,21 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (!mostrarBanda || e.props.hasSurvey) return next(e)
     const lista = await read($, lecturas)
-    const ultima = lista[lista.length - 1]
-    if (ultima === undefined) return next(e)
+    const ultima = (await read($, actual)) ?? lista[lista.length - 1]
+    const { Box, Text, Button } = $.ui.resolve(e)
+    const detalle = (
+      <Button key="detalle" label="Detalle" hotkey="c" onPress={() => $.ui.open({ id: PANEL, title: 'Contexto y costo', closeOnEscape: true })} />
+    )
+    if (ultima === undefined) {
+      return (
+        <Box flexDirection="row" paddingX={1}>
+          <Text dimColor>○ Contexto y costo: aparecen al terminar el primer turno · </Text>
+          {detalle}
+        </Box>
+      )
+    }
     const lims = await read($, limites)
 
-    const { Box, Text } = $.ui.resolve(e)
     const ancho = e.props.bodyColumns ?? 80
     const color = colorDe(ultima.porcentaje, umbral)
     const limite = limiteMasAlto(lims)
@@ -115,6 +139,8 @@ export const register: Register = (on, options) => {
           </Text>
         )}
         {ultima.porcentaje >= umbral && <Text color="red"> → /compact</Text>}
+        <Text> </Text>
+        {detalle}
       </Box>
     )
   })
@@ -206,6 +232,20 @@ async function leerUso($: EngineInterface): Promise<Uso | undefined> {
   } catch {
     return undefined
   }
+}
+
+/** El mismo detalle del panel, en texto plano. */
+function resumen(uso: Uso, lista: Lectura[], umbral: number): string {
+  const lineas = [
+    `Contexto: ${uso.porcentaje}% (${uso.tokens.toLocaleString('es-MX')} de ${uso.ventana.toLocaleString('es-MX')} tokens)${uso.porcentaje >= umbral ? ' → conviene /compact' : ''}`,
+    `Costo de la sesión: ${usd(uso.usd)}${lista.length > 0 ? ` · promedio por turno ${usd(uso.usd / lista.length)}` : ''} (equivalente en precio de API)`,
+  ]
+  for (const l of uso.limites) {
+    lineas.push(`Límite ${nombreLimite(l.tipo)}: ${Math.round(l.porcentaje)}%${l.reinicia ? ` · reinicia ${hora(l.reinicia)}` : ''}`)
+  }
+  const caro = lista.reduce<Lectura | undefined>((m, l) => (m === undefined || l.usdTurno > m.usdTurno ? l : m), undefined)
+  if (caro !== undefined && caro.usdTurno > 0) lineas.push(`Turno más caro: ${usd(caro.usdTurno)} (${caro.herramientas} herramientas)`)
+  return lineas.join('\n')
 }
 
 function clamp(n: number, min: number, max: number): number {

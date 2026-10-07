@@ -44,3 +44,19 @@ test('el panel muestra el detalle por turno y los límites', async ($, on) => {
     await ui.unmount()
   }
 })
+
+test('la banda se ve antes del primer turno', async $ => {
+  const ui = await $.ui.mount({ plugin: 'contexto-costo', surface: 'terminal', component: 'AbovePrompt', props: { bodyColumns: 120 } as never })
+  expect(await ui.find({ type: 'Text', text: /aparecen al terminar el primer turno/ })).toBeDefined()
+  expect(await ui.find({ type: 'Button', label: 'Detalle' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('/costo responde con un resumen en texto', async ($, on) => {
+  on('session.usage', async () => ({ value: usoCon(60_000, 0.8) }))
+  on('turn.complete', async () => ({ text: 'ok' }))
+  await $.turn.complete({ reason: 'answer', answer: 'ok', durationMs: 1000, isAborted: false, turnId: 't' })
+  const r = await $.command.run({ command: 'costo', args: '' } as never)
+  expect(String((r as { text?: string }).text)).toContain('Contexto: 30%')
+  expect(String((r as { text?: string }).text)).toContain('Límite 5h: 41%')
+})
