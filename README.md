@@ -25,7 +25,7 @@ En una sesión de Claude Code en la terminal, instala los que quieras:
 
 La primera vez te pregunta si quieres agregar el marketplace: responde `y` y elige el scope **user** (para que funcione en todos tus proyectos).
 
-Si el repo no está en GitHub (GitLab, Bitbucket, servidor interno), agrégalo con su URL de git y después instala:
+O desde la terminal, sin abrir Claude Code:
 
 ```bash
 claude plugin marketplace add https://github.com/Vincitorecode/mods-equipo.git
