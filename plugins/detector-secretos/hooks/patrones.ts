@@ -57,14 +57,30 @@ export function buscarSecretos(texto: string): Hallazgo[] {
     for (const m of texto.matchAll(patron)) {
       const valor = grupo !== undefined ? m[grupo] : m[0]
       if (valor === undefined || DE_EJEMPLO.test(valor) || vistos.has(valor)) continue
-      // Un valor muy repetitivo o sin variedad (aaaaaaaa, 12345678) no es un secreto real.
-      if (tipo === 'Contraseña o token en el código' && new Set(valor).size < 5) continue
+      if (tipo === 'Contraseña o token en el código' && !pareceSecreto(m[0], valor)) continue
       vistos.add(valor)
       const linea = texto.slice(0, m.index ?? 0).split('\n').length
       hallazgos.push({ tipo, muestra: enmascarar(tipo === 'Llave privada' ? m[0] : valor), linea })
     }
   }
   return hallazgos
+}
+
+/** Nombres que hablan de una contraseña pero no la guardan: passwordLabel, secretName, apiKeyHeader... */
+const NOMBRE_NO_SECRETO =
+  /(label|text|placeholder|title|hint|message|msg|error|name|id|field|input|header|regex|pattern|min|max|length|len|url|path|route|type|policy|rule|format|description|desc|selector|class|icon)s?$/i
+
+/**
+ * Para `nombre = "valor"`: ¿parece un secreto de verdad y no un texto de la UI
+ * o un identificador ("Contraseña", "login-password-input", "X-Api-Key")?
+ */
+function pareceSecreto(asignacion: string, valor: string): boolean {
+  const nombre = asignacion.split(/["']?\s*[:=]/)[0] ?? ''
+  if (NOMBRE_NO_SECRETO.test(nombre)) return false
+  // Un valor muy repetitivo o sin variedad (aaaaaaaa, 12345678) no es un secreto real.
+  if (new Set(valor).size < 5) return false
+  // Los secretos llevan números o símbolos, o son una cadena larga sin separadores de palabras.
+  return /\d/.test(valor) || /[!@#$%^&*+=?~]/.test(valor) || (valor.length >= 20 && !/[-_.]/.test(valor))
 }
 
 /** "AKIAABCDEFGHIJKLMNOP" → "AKIA…OP (20 caracteres)" */
@@ -98,4 +114,23 @@ export function esCommit(comando: string): boolean {
 /** ¿El commit incluye `-a` / `--all` (agrega archivos modificados además de los staged)? */
 export function commitConTodo(comando: string): boolean {
   return /\bcommit\b.*(\s--all\b|\s-[a-zA-Z]*a[a-zA-Z]*\b)/.test(comando)
+}
+
+/**
+ * Las rutas que un `git add` del mismo comando va a agregar antes del commit
+ * (`git add src/a.ts && git commit ...`). undefined si no hay `git add`;
+ * [] si agrega todo (`git add .`, `-A`, `--all`).
+ */
+export function rutasDeGitAdd(comando: string): string[] | undefined {
+  let rutas: string[] | undefined
+  for (const parte of comando.split(/&&|\|\||;|\n/)) {
+    const m = parte.match(/^\s*git(\s+-C\s+\S+)*\s+add\b(.*)$/)
+    if (!m) continue
+    const args = ((m[2] ?? '').match(/"[^"]*"|'[^']*'|\S+/g) ?? []).map(a => a.replace(/^["']|["']$/g, ''))
+    const todo = args.some(a => a === '.' || a === '-A' || a === '--all' || a === ':/')
+    const nuevas = args.filter(a => !a.startsWith('-'))
+    if (todo || nuevas.length === 0 || rutas?.length === 0) rutas = []
+    else rutas = [...(rutas ?? []), ...nuevas]
+  }
+  return rutas
 }

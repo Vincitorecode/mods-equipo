@@ -34,15 +34,11 @@ const REGLAS_SEGMENTO: Regla[] = [
   { categoria: 'Infraestructura', motivo: 'pulumi up / destroy cambia infraestructura real', patron: /\bpulumi\b.*\b(up|destroy|update)\b/ },
   { categoria: 'Infraestructura', motivo: 'cdk / sam deploy o destroy cambia infraestructura de AWS', patron: /\b(cdk|sam)\s+(deploy|destroy)\b/ },
 
-  // Kubernetes y Helm (siempre peligrosos, en cualquier contexto)
-  { categoria: 'Kubernetes', motivo: 'kubectl delete / drain elimina recursos o vacía nodos', patron: /\bkubectl\b.*\b(delete|drain)\b/ },
-  { categoria: 'Kubernetes', motivo: 'helm uninstall / rollback cambia una release', patron: /\bhelm\b.*\b(uninstall|delete|rollback)\b/ },
-
-  // Git
-  { categoria: 'Git', motivo: 'git push --force reescribe el historial remoto', patron: /\bgit\b.*\bpush\b.*(\s--force(-with-lease)?\b|\s-f\b|\s\+\S)/ },
-  { categoria: 'Git', motivo: 'push directo a main / master', patron: /\bgit\b.*\bpush\b\s+\S+\s+(\S+:)?(main|master)\b/ },
-  { categoria: 'Git', motivo: 'git reset --hard descarta cambios sin commit', patron: /\bgit\b.*\breset\b.*--hard\b/ },
-  { categoria: 'Git', motivo: 'git clean -f borra archivos no versionados', patron: /\bgit\b.*\bclean\b.*\s-[a-zA-Z]*f/ },
+  // Git (el subcomando va justo después de `git`, para no confundirse con el texto de un mensaje de commit)
+  { categoria: 'Git', motivo: 'git push --force reescribe el historial remoto', patron: /\bgit(\s+-[cC]\s+\S+)*\s+push\b.*(\s--force(-with-lease)?\b|\s-[a-zA-Z]*f[a-zA-Z]*\b|\s\+\S)/ },
+  { categoria: 'Git', motivo: 'push directo a main / master', patron: /\bgit(\s+-[cC]\s+\S+)*\s+push(\s+-\S+)*\s+[^\s-]\S*\s+(\S*:)?(main|master)(?=$|\s)/ },
+  { categoria: 'Git', motivo: 'git reset --hard descarta cambios sin commit', patron: /\bgit(\s+-[cC]\s+\S+)*\s+reset\b.*\s--hard\b/ },
+  { categoria: 'Git', motivo: 'git clean -f borra archivos no versionados', patron: /\bgit(\s+-[cC]\s+\S+)*\s+clean\b.*\s-[a-zA-Z]*f/ },
 
   // Migraciones y bases de datos
   { categoria: 'Migración', motivo: 'prisma migrate deploy / reset aplica o reinicia el esquema', patron: /\bprisma\s+migrate\s+(deploy|reset)\b/ },
@@ -74,9 +70,26 @@ const REGLAS_BD: Regla[] = [
   { categoria: 'Base de datos', motivo: 'Redis FLUSHALL / FLUSHDB borra todas las llaves', patron: /\bflush(all|db)\b/i },
 ]
 
-/** Verbos de kubectl / helm que cambian el clúster (se vigilan si el contexto es de producción). */
-const KUBE_MUTA =
-  /\b(kubectl\b.*\b(apply|create|delete|patch|edit|replace|scale|rollout|drain|cordon|uncordon|taint|set|label|annotate|exec|run|expose|autoscale)|helm\b.*\b(install|upgrade|uninstall|delete|rollback))\b/
+/** Subcomandos de kubectl / helm que cambian el clúster (se vigilan si el contexto es de producción). */
+const KUBECTL_MUTA = new Set(['apply', 'create', 'delete', 'patch', 'edit', 'replace', 'scale', 'rollout', 'drain', 'cordon', 'uncordon', 'taint', 'set', 'label', 'annotate', 'exec', 'run', 'expose', 'autoscale'])
+const HELM_MUTA = new Set(['install', 'upgrade', 'uninstall', 'delete', 'rollback'])
+
+/** Banderas globales de kubectl / helm que llevan un valor aparte (`-n prod`). */
+const BANDERA_CON_VALOR = /^(-n|--namespace|--context|--kube-context|--kubeconfig|-s|--server|--cluster|--user|--token|--as)$/
+
+/** El subcomando de kubectl / helm en una parte del comando (`kubectl -n x delete pod` → "delete"). */
+function subcomandoKube(segmento: string): { cli: 'kubectl' | 'helm'; verbo: string } | undefined {
+  const palabras = segmento.split(/\s+/)
+  const i = palabras.findIndex(p => /(^|\/)(kubectl|helm)$/.test(p))
+  if (i < 0) return undefined
+  const cli = palabras[i]!.endsWith('helm') ? 'helm' : 'kubectl'
+  for (let j = i + 1; j < palabras.length; j++) {
+    const p = palabras[j]!
+    if (BANDERA_CON_VALOR.test(p)) j++
+    else if (!p.startsWith('-')) return { cli, verbo: p }
+  }
+  return undefined
+}
 
 /** Verbos que, junto a una señal de producción en el mismo comando, merecen confirmación. */
 const VERBO_ESCRITURA =
@@ -154,6 +167,14 @@ export function clasificar(comando: string, prod: RegExp, extras: RegExp[] = [])
   const usaBd = CLIENTE_BD.test(comando)
   for (const crudo of segmentos(comando)) {
     if (rmPeligroso(limpiar(crudo))) agregar({ categoria: 'Archivos', motivo: 'rm -r borra carpetas de forma permanente' })
+    // Kubernetes y Helm: siempre peligrosos, en cualquier contexto
+    const kube = subcomandoKube(crudo)
+    if (kube?.cli === 'kubectl' && (kube.verbo === 'delete' || kube.verbo === 'drain')) {
+      agregar({ categoria: 'Kubernetes', motivo: 'kubectl delete / drain elimina recursos o vacía nodos' })
+    }
+    if (kube?.cli === 'helm' && ['uninstall', 'delete', 'rollback'].includes(kube.verbo)) {
+      agregar({ categoria: 'Kubernetes', motivo: 'helm uninstall / rollback cambia una release' })
+    }
     for (const regla of REGLAS_SEGMENTO) {
       if (regla.patron.test(crudo)) agregar({ categoria: regla.categoria, motivo: regla.motivo })
     }
@@ -184,7 +205,10 @@ export function usaKube(comando: string): boolean {
 
 /** ¿El comando cambia el clúster? */
 export function kubeMuta(comando: string): boolean {
-  return KUBE_MUTA.test(comando)
+  return segmentos(comando).some(s => {
+    const kube = subcomandoKube(s)
+    return kube !== undefined && (kube.cli === 'kubectl' ? KUBECTL_MUTA : HELM_MUTA).has(kube.verbo)
+  })
 }
 
 /** El contexto pasado con --context / --kube-context, si lo hay. */

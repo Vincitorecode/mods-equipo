@@ -12,7 +12,7 @@
 
 import type { EngineInterface, Register } from 'claude-code'
 
-import { buscarSecretos, commitConTodo, esCommit, lineasAgregadas } from './patrones'
+import { buscarSecretos, commitConTodo, esCommit, lineasAgregadas, rutasDeGitAdd } from './patrones'
 import type { Hallazgo } from './patrones'
 
 const PERMITIR = 'Permitir esta vez'
@@ -56,6 +56,15 @@ export const register: Register = (on, options) => {
     const cwd = await carpetaDelComando($, comando)
     const diffs = [await diff($, cwd, ['diff', '--cached', '-U0', '--no-color'])]
     if (commitConTodo(comando)) diffs.push(await diff($, cwd, ['diff', '-U0', '--no-color']))
+    // `git add ... && git commit` en un solo comando: lo que se va a agregar aún no está en stage.
+    const rutas = rutasDeGitAdd(comando)
+    if (rutas !== undefined) {
+      diffs.push(await diff($, cwd, ['diff', '-U0', '--no-color', '--', ...rutas]))
+      const nuevos = (await diff($, cwd, ['ls-files', '--others', '--exclude-standard', '-z', '--', ...rutas])).split('\0').filter(f => f !== '')
+      for (const archivo of nuevos.slice(0, MAX_NUEVOS)) {
+        diffs.push(await diff($, cwd, ['diff', '--no-index', '-U0', '--no-color', '--', '/dev/null', archivo]))
+      }
+    }
 
     const revisiones: Revision[] = []
     for (const [archivo, texto] of lineasAgregadas(diffs.join('\n'))) {
@@ -70,6 +79,9 @@ export const register: Register = (on, options) => {
   }).catch(($, e, next) => next(e))
   // ↑ En commits, si la revisión falla (ej. no es un repo git) se deja seguir: git dará su propio error.
 }
+
+/** Archivos nuevos (sin versionar) que se revisan como máximo en un `git add && git commit`. */
+const MAX_NUEVOS = 50
 
 const FALLO = 'detector-secretos: hubo un error al revisar el contenido, así que no se escribió por seguridad.'
 
@@ -134,5 +146,6 @@ async function carpetaDelComando($: EngineInterface, comando: string): Promise<s
 
 async function diff($: EngineInterface, cwd: string, args: string[]): Promise<string> {
   const r = await $.process.run(['git', ...args], { cwd, timeoutMs: 10000 })
-  return r.exitCode === 0 ? r.stdout : ''
+  // `git diff --no-index` termina con 1 cuando hay diferencias.
+  return r.exitCode === 0 || (args.includes('--no-index') && r.exitCode === 1) ? r.stdout : ''
 }

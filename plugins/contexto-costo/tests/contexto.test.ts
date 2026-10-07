@@ -30,3 +30,17 @@ test('el panel sin datos lo dice', async $ => {
   expect(await ui.find({ type: 'Text', text: /Aún no hay datos/ })).toBeDefined()
   await ui.unmount()
 })
+
+test('el panel muestra el detalle por turno y los límites', async ($, on) => {
+  on('session.usage', async () => ({ value: usoCon(60_000, 0.8) }))
+  on('turn.complete', async () => ({ text: 'ok' }))
+  await $.turn.complete({ reason: 'answer', answer: 'ok', durationMs: 1000, isAborted: false, turnId: 't' })
+
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount({ plugin: 'contexto-costo', surface, component: 'Pane', requestId: 'contexto-costo', props: { bodyColumns: 80 } } as never)
+    expect(await ui.find({ type: 'Text', text: /60,000 de 200,000 tokens/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /Sesión: \$0\.80/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /5h 41%/ })).toBeDefined()
+    await ui.unmount()
+  }
+})

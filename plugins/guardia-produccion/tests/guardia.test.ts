@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { PATRON_PROD_DEFECTO, clasificar, compilar } from '../hooks/reglas'
+import { PATRON_PROD_DEFECTO, clasificar, compilar, kubeMuta } from '../hooks/reglas'
 
 const prod = compilar('', PATRON_PROD_DEFECTO)
 const riesgoso = (c: string) => clasificar(c, prod).length > 0
@@ -18,6 +18,9 @@ describe('reglas', () => {
       'psql -c "SELECT * FROM users WHERE id = 1"',
       'terraform plan',
       'npm run build -- --env production',
+      'git commit -m "fix: push to main button"',
+      'git push origin main-feature',
+      'kubectl logs delete-job-123',
     ]) {
       expect(riesgoso(c)).toBe(false)
     }
@@ -30,6 +33,10 @@ describe('reglas', () => {
       'kubectl delete deployment api',
       'git push --force origin feature/x',
       'git push origin main',
+      'git push -u origin main',
+      'git push --set-upstream origin master',
+      'git push origin HEAD:main',
+      'kubectl -n api delete pod x',
       'git reset --hard HEAD~3',
       'rm -rf src',
       'sudo rm -rf /var/www',
@@ -49,6 +56,11 @@ describe('reglas', () => {
     ]) {
       expect(riesgoso(c)).toBe(true)
     }
+  })
+
+  test('distingue los subcomandos de kubectl que cambian el clúster', async () => {
+    for (const c of ['kubectl apply -f x.yaml', 'kubectl --context prod-mx scale deploy api --replicas 0', 'helm upgrade api ./chart']) expect(kubeMuta(c)).toBe(true)
+    for (const c of ['kubectl logs api-run-worker', 'kubectl get pods -l app=label-svc', 'kubectl -n exec describe pod x', 'helm list']) expect(kubeMuta(c)).toBe(false)
   })
 
   test('acepta reglas extra del equipo', async () => {

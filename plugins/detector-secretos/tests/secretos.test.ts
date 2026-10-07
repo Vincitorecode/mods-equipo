@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { buscarSecretos, esCommit, lineasAgregadas } from '../hooks/patrones'
+import { buscarSecretos, esCommit, lineasAgregadas, rutasDeGitAdd } from '../hooks/patrones'
 
 const tipos = (t: string) => buscarSecretos(t).map(h => h.tipo)
 
@@ -24,6 +24,12 @@ describe('patrones', () => {
       'DATABASE_URL=postgres://user:<password>@localhost/app',
       'token = "xxxxxxxxxxxx"',
       'const password = "password"',
+      'passwordLabel: "Contraseña"',
+      'forgotPassword: "olvidaste"',
+      'passwordInputId: "login-password-input"',
+      'apiKeyHeader: "X-Api-Key"',
+      'secretName: "db-credentials"',
+      'const PASSWORD_MIN_LENGTH = "minimum8"',
     ]) {
       expect(buscarSecretos(t).length).toBe(0)
     }
@@ -39,6 +45,13 @@ describe('patrones', () => {
     expect([...lineasAgregadas(d).keys()]).toEqual(['src/a.ts', 'b.ts'])
     expect(esCommit('git commit -m "x"')).toBe(true)
     expect(esCommit('git log')).toBe(false)
+  })
+
+  test('sabe qué va a agregar un git add en el mismo comando', async () => {
+    expect(rutasDeGitAdd('git commit -m x')).toBeUndefined()
+    expect(rutasDeGitAdd('git add . && git commit -m x')).toEqual([])
+    expect(rutasDeGitAdd('git add -A && git commit -m x')).toEqual([])
+    expect(rutasDeGitAdd('git add src/a.ts "b c.ts" && git commit -m x')).toEqual(['src/a.ts', 'b c.ts'])
   })
 })
 
@@ -58,6 +71,26 @@ describe('en Claude Code', () => {
     })
     const r = await $.tool.call({ tool: 'Write', file_path: '/p/config.ts', content: 'export const k = "AKIAIOSFODNN7EXAMPLQ"' })
     expect(escribio).toBe(false)
+    expect(String(r.deny ?? r.text)).toContain('Detector de secretos')
+  })
+
+  test('git add . && git commit revisa lo que aún no está en stage', async ($, on) => {
+    let corrio = false
+    on('session.cwd', async () => ({ value: '/p' }))
+    const salida = (exitCode: number, stdout: string) => ({ value: { exitCode, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
+    on('process.run', async (_$, e) => {
+      const a = e.argv.join(' ')
+      if (a.includes('ls-files')) return salida(0, 'config.ts\0')
+      if (a.includes('--no-index')) return salida(1, '+++ b/config.ts\n+export const k = "AKIAIOSFODNN7EXAMPLQ"\n')
+      return salida(0, '')
+    })
+    on('tool.call', { tool: 'AskUserQuestion' }, async () => ({ deny: 'cerrado' }))
+    on('tool.call', { tool: 'Bash' }, async () => {
+      corrio = true
+      return { result: { stdout: '', stderr: '', interrupted: false, isImage: false } }
+    })
+    const r = await $.tool.call({ tool: 'Bash', command: 'git add . && git commit -m "config"' })
+    expect(corrio).toBe(false)
     expect(String(r.deny ?? r.text)).toContain('Detector de secretos')
   })
 

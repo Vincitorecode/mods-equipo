@@ -46,12 +46,12 @@ export const register: Register = (on, options) => {
     herramientas = 0
     usdAlInicio = (await leerUso($))?.usd ?? usdAlInicio
     return next(e)
-  })
+  }).catch(($, e, next) => next(e)) // la banda nunca debe frenar un prompt
 
   on('tool.call', ($, e, next) => {
     if (e.agentId === undefined) herramientas += 1
     return next(e)
-  })
+  }).catch(($, e, next) => next(e))
 
   on('turn.complete', async ($, e, next) => {
     const r = await next(e)
