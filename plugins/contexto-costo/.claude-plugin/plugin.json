@@ -1,7 +1,7 @@
 {
   "name": "contexto-costo",
-  "version": "0.2.0",
-  "description": "Banda sobre el prompt con el uso del contexto, el costo de la sesión y del último turno y los límites de uso; /costo abre el detalle.",
+  "version": "0.3.0",
+  "description": "Barra de contexto bajo cada llamada (principal y subagentes), banda con contexto, costo y límites; /costo abre el detalle.",
   "author": {
     "name": "Victor Tinoco"
   },
@@ -17,6 +17,12 @@
       "type": "boolean",
       "title": "Mostrar la banda sobre el prompt",
       "description": "Si la apagas, el detalle sigue disponible con /costo.",
+      "default": true
+    },
+    "mostrarEnLlamadas": {
+      "type": "boolean",
+      "title": "Mostrar la barra de contexto bajo cada llamada",
+      "description": "Una línea bajo cada herramienta con el % de contexto, los tokens que quedan y qué agente la hizo.",
       "default": true
     }
   }

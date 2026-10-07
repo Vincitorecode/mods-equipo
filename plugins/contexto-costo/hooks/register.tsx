@@ -3,15 +3,17 @@
 // • Banda sobre el prompt: % de contexto usado con su tendencia, costo de la
 //   sesión, costo del último turno y el límite de uso más cercano.
 // • Aviso (toast) al pasar el umbral de contexto configurado, y otro al 95%.
+// • Bajo cada llamada a una herramienta, una línea con el % de contexto del agente
+//   que la hizo, los tokens que le quedan y, si es un subagente, cuál es.
 // • /costo abre un panel con el detalle por turno y los límites de uso.
 //
 // Los costos son los mismos que calcula /cost (equivalente en precio de API).
 // Con un plan de suscripción no se cobran así, pero sirven para comparar.
 
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register } from 'claude-code'
+import type { EngineInterface, ModelUsage, Register } from 'claude-code'
 
-import type { Lectura, Limite } from '../types'
+import type { Lectura, Limite, Llamada, Paso } from '../types'
 
 const PANEL = 'contexto-costo'
 const HISTORIA = 30
@@ -21,10 +23,18 @@ const lecturas = atom({ plugin: 'contexto-costo', key: 'lecturas' } as const, []
 const limites = atom({ plugin: 'contexto-costo', key: 'limites' } as const, [] as Limite[])
 const alertado = atom({ plugin: 'contexto-costo', key: 'alertado' } as const, 0)
 const actual = atom({ plugin: 'contexto-costo', key: 'actual' } as const, null as Lectura | null)
+const pasos = atom({ plugin: 'contexto-costo', key: 'pasos' } as const, {} as Record<string, Paso>)
+const llamadas = atom({ plugin: 'contexto-costo', key: 'llamadas' } as const, [] as Llamada[])
+const nombres = atom({ plugin: 'contexto-costo', key: 'nombres' } as const, {} as Record<string, string>)
+
+/** Fotos de llamadas que se guardan (las filas más viejas pierden su barra). */
+const MAX_LLAMADAS = 400
+const PRINCIPAL = 'principal'
 
 export const register: Register = (on, options) => {
   const umbral = clamp(Number(options.umbralAlerta ?? 80), 10, 99)
   const mostrarBanda = options.mostrarBanda !== false
+  const mostrarEnLlamadas = options.mostrarEnLlamadas !== false
 
   // Datos del turno en curso (solo los usa el hook de cierre de turno).
   let usdAlInicio = 0
@@ -61,10 +71,50 @@ export const register: Register = (on, options) => {
     return next(e)
   }).catch(($, e, next) => next(e)) // la banda nunca debe frenar un prompt
 
-  on('tool.call', ($, e, next) => {
+  // Cada petición al modelo: cuántos tokens lleva el agente que la hizo.
+  on('turn.step', async function* ($, e, next) {
+    const r = yield* next(e)
+    try {
+      if (r.usage) await anotarPaso($, e.agentId, r.usage)
+    } catch {
+      // Solo es para mostrar: nunca afecta la respuesta.
+    }
+    return r
+  })
+
+  on('tool.call', async ($, e, next) => {
     if (e.agentId === undefined) herramientas += 1
+    try {
+      await anotarLlamada($, e.tool_use_id, e.agentId)
+    } catch {
+      // nada
+    }
     return next(e)
   }).catch(($, e, next) => next(e))
+
+  // ---- Barra de contexto bajo cada llamada ----
+  on('ui.render', { component: 'ToolUse' }, async ($, e, next) => {
+    const propio = await next(e)
+    if (!mostrarEnLlamadas) return propio
+    const foto = (await read($, llamadas)).find(l => l.id === e.props.tool_use_id)
+    if (foto === undefined || foto.ventana <= 0) return propio
+
+    const { Box, Text } = $.ui.resolve(e)
+    const porcentaje = Math.min(100, Math.round((foto.tokens / foto.ventana) * 100))
+    const color = colorDe(porcentaje, umbral)
+    return (
+      <Box flexDirection="column">
+        {propio}
+        <Text>
+          <Text dimColor>  ⎿ </Text>
+          <Text color={color}>{barra(porcentaje, 10)}</Text>
+          <Text color={color} bold> {porcentaje}%</Text>
+          <Text dimColor> contexto · quedan {corto(Math.max(0, foto.ventana - foto.tokens))}</Text>
+          {foto.agente !== null && <Text color="cyan"> · {foto.agente}</Text>}
+        </Text>
+      </Box>
+    )
+  })
 
   on('turn.complete', async ($, e, next) => {
     const r = await next(e)
@@ -246,6 +296,33 @@ function resumen(uso: Uso, lista: Lectura[], umbral: number): string {
   const caro = lista.reduce<Lectura | undefined>((m, l) => (m === undefined || l.usdTurno > m.usdTurno ? l : m), undefined)
   if (caro !== undefined && caro.usdTurno > 0) lineas.push(`Turno más caro: ${usd(caro.usdTurno)} (${caro.herramientas} herramientas)`)
   return lineas.join('\n')
+}
+
+/** Guarda cuántos tokens lleva un agente según su última petición al modelo. */
+async function anotarPaso($: EngineInterface, agentId: string | undefined, uso: ModelUsage & { model: string }): Promise<void> {
+  // Lo que se envió más lo que respondió: con eso empieza su siguiente petición.
+  const tokens = uso.input_tokens + uso.cache_read_input_tokens + uso.cache_creation_input_tokens + uso.output_tokens
+  await update($, pasos, m => ({ ...m, [agentId ?? PRINCIPAL]: { tokens, modelo: uso.model } }))
+  if (agentId !== undefined && (await read($, nombres))[agentId] === undefined) {
+    const info = (await $.agent.list()).find(a => a.id === agentId)
+    const nombre = info === undefined ? 'subagente' : info.description ? `${info.type}: ${info.description}` : info.type
+    await update($, nombres, m => ({ ...m, [agentId]: nombre }))
+  }
+}
+
+/** Toma la foto del contexto del agente que hace esta llamada. */
+async function anotarLlamada($: EngineInterface, id: string, agentId: string | undefined): Promise<void> {
+  const todos = await read($, pasos)
+  const paso = todos[agentId ?? PRINCIPAL]
+  if (paso === undefined) return
+  const principal = todos[PRINCIPAL]
+  const ventanaPrincipal = (await leerUso($))?.ventana ?? 200_000
+  // La ventana del principal la da la sesión; la de un subagente se deduce de su modelo.
+  const ventana =
+    agentId === undefined || paso.modelo === principal?.modelo ? ventanaPrincipal : paso.modelo.includes('[1m]') ? 1_000_000 : 200_000
+  const agente = agentId === undefined ? null : ((await read($, nombres))[agentId] ?? 'subagente')
+  const llamada: Llamada = { id, agente, tokens: paso.tokens, ventana }
+  await update($, llamadas, lista => [...lista, llamada].slice(-MAX_LLAMADAS))
 }
 
 function clamp(n: number, min: number, max: number): number {

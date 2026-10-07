@@ -60,3 +60,56 @@ test('/costo responde con un resumen en texto', async ($, on) => {
   expect(String((r as { text?: string }).text)).toContain('Contexto: 30%')
   expect(String((r as { text?: string }).text)).toContain('Límite 5h: 41%')
 })
+
+const pasoCon = (tokens: number, model = 'claude-opus-5-5') => async function* () {
+  return {
+    turnId: 't', index: 0, answer: '', toolUses: [], stopReason: 'tool_use',
+    usage: { input_tokens: 1000, output_tokens: 500, cache_read_input_tokens: tokens - 1500, cache_creation_input_tokens: 0, model },
+  } as never
+}
+
+/** La fila que el motor dibujaría por su cuenta. */
+const filaPropia = async () => ({ type: 'Text', children: ['Herramienta(...)'] }) as never
+
+async function paso($: Parameters<Parameters<typeof test>[1]>[0], agentId?: string) {
+  const s = $.turn.step({ turnId: 't', index: 0, model: 'claude-opus-5-5', messageCount: 1, agentId } as never)
+  for await (const _ of s) { /* sin chunks */ }
+}
+
+test('cada llamada muestra el contexto del agente principal', async ($, on) => {
+  let id = ''
+  on('ui.render', { component: 'ToolUse' }, filaPropia)
+  on('session.usage', async () => ({ value: usoCon(90_000, 0.5) }))
+  on('turn.step', pasoCon(90_000))
+  on('tool.call', { tool: 'Bash' }, async (_$, e) => {
+    id = e.tool_use_id
+    return { result: { stdout: '', stderr: '', interrupted: false, isImage: false } }
+  })
+  await paso($)
+  await $.tool.call({ tool: 'Bash', command: 'ls' })
+
+  const ui = await $.ui.mount({ plugin: 'contexto-costo', surface: 'terminal', component: 'ToolUse', requestId: id, props: { tool_use_id: id, tool: 'Bash', input: { command: 'ls' }, isRunning: false, isErrored: false, isInterrupted: false } } as never)
+  expect(await ui.find({ type: 'Text', text: /45%/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /quedan 110k/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /Herramienta/ })).toBeDefined() // la fila original sigue
+  await ui.unmount()
+})
+
+test('las llamadas de un subagente dicen cuál es', async ($, on) => {
+  let id = ''
+  on('ui.render', { component: 'ToolUse' }, filaPropia)
+  on('session.usage', async () => ({ value: usoCon(20_000, 0.5) }))
+  on('agent.list', async () => ({ value: [{ id: 'a1', description: 'buscar archivos', type: 'Explore', status: 'running' }] as never }))
+  on('turn.step', pasoCon(150_000, 'claude-haiku-4-5'))
+  on('tool.call', { tool: 'Grep' }, async (_$, e) => {
+    id = e.tool_use_id
+    return { result: { mode: 'files_with_matches', filenames: [], numFiles: 0 } as never }
+  })
+  await paso($, 'a1')
+  await $.tool.call({ tool: 'Grep', pattern: 'x', agentId: 'a1' } as never)
+
+  const ui = await $.ui.mount({ plugin: 'contexto-costo', surface: 'desktop', component: 'ToolUse', requestId: id, props: { tool_use_id: id, tool: 'Grep', input: { pattern: 'x' }, isRunning: false, isErrored: false, isInterrupted: false } } as never)
+  expect(await ui.find({ type: 'Text', text: /75%/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /Explore: buscar archivos/ })).toBeDefined()
+  await ui.unmount()
+})

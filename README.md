@@ -99,7 +99,18 @@ Lo que encuentra se muestra **enmascarado** (`AKIA…LQ (20 caracteres)`), nunca
 
 ## contexto-costo
 
-Una línea sobre el prompt que se actualiza al terminar cada turno:
+**Bajo cada llamada** a una herramienta, una línea con el contexto del agente que la hizo en ese momento:
+
+```
+Bash(npm test)
+  ⎿ █████░░░░░ 47% contexto · quedan 106k
+Grep("TODO")
+  ⎿ ███████░░░ 75% contexto · quedan 50k · Explore: buscar archivos
+```
+
+El color pasa de verde a amarillo a rojo según el umbral. Si la llamada la hizo un subagente, dice cuál y mide **su** contexto, no el del agente principal. Se apaga en la configuración (*Mostrar la barra de contexto bajo cada llamada*).
+
+Además, una línea sobre el prompt que se actualiza al terminar cada turno:
 
 ```
 ◕ Contexto 78% 156k/200k ▂▃▄▅▆ · Sesión $2.34 · último turno $0.41 · límite 5h 37%
@@ -111,11 +122,11 @@ Una línea sobre el prompt que se actualiza al terminar cada turno:
 - Aparece desde que abres la sesión, y tiene un botón **Detalle** (tecla `c` con la banda enfocada) que abre el panel.
 - **`/costo`** abre un panel con el detalle: barra de contexto, costo de la sesión y promedio por turno, límites de uso con su hora de reinicio, y una tabla por turno (contexto, costo, herramientas usadas) con el turno más caro resaltado.
 
-**Dónde se ve:** la banda y los paneles se dibujan en la terminal, la app de escritorio (pestaña Code), VS Code y la app móvil. En el navegador (claude.ai/code) no hay banda ni panel, pero `/costo` responde con el mismo resumen en texto (contexto, costo, límites y el turno más caro).
+**Dónde se ve:** la barra por llamada, la banda y los paneles se dibujan en la terminal, la app de escritorio (pestaña Code), VS Code y la app móvil. En el navegador (claude.ai/code) no hay banda ni panel, pero `/costo` responde con el mismo resumen en texto (contexto, costo, límites y el turno más caro).
 
 Los costos son los mismos que calcula `/cost` (equivalente en precio de API). Si usas un plan de suscripción no se te cobran así, pero sirven para comparar sesiones y detectar turnos caros.
 
-**Configuración:** *Alertar al llegar a este % de contexto* (por defecto 80) y *Mostrar la banda sobre el prompt* (si la apagas, `/costo` sigue funcionando).
+**Configuración:** *Alertar al llegar a este % de contexto* (por defecto 80), *Mostrar la barra de contexto bajo cada llamada* y *Mostrar la banda sobre el prompt* (si la apagas, `/costo` sigue funcionando).
 
 ---
 
