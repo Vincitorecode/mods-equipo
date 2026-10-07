@@ -1,0 +1,22 @@
+{
+  "name": "guardia-produccion",
+  "version": "0.1.0",
+  "description": "Detiene comandos riesgosos (deploys, migraciones, borrados, force push, kubectl en prod) y pide confirmación antes de ejecutarlos.",
+  "author": {
+    "name": "Victor Tinoco"
+  },
+  "userConfig": {
+    "patronProduccion": {
+      "type": "string",
+      "title": "Patrón de producción",
+      "description": "Expresión regular que identifica entornos de producción en contextos de Kubernetes y en los comandos.",
+      "default": "prod|production|prd|live"
+    },
+    "patronesExtra": {
+      "type": "string",
+      "title": "Comandos extra a vigilar",
+      "description": "Expresiones regulares adicionales separadas por ;; (ej. ./scripts/deploy.sh;;make release).",
+      "default": ""
+    }
+  }
+}

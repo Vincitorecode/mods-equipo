@@ -1,0 +1,10 @@
+{
+  "name": "mods-equipo",
+  "owner": { "name": "Victor Tinoco" },
+  "metadata": { "description": "Mods de Claude Code para el equipo de desarrollo: seguridad y visibilidad." },
+  "plugins": [
+    { "name": "guardia-produccion", "source": "./plugins/guardia-produccion", "description": "Pide confirmación antes de deploys, migraciones, borrados, force push y kubectl contra producción." },
+    { "name": "detector-secretos", "source": "./plugins/detector-secretos", "description": "Se detiene si Claude va a escribir o commitear API keys, tokens, llaves privadas o contraseñas." },
+    { "name": "contexto-costo", "source": "./plugins/contexto-costo", "description": "Banda con uso de contexto, costo y límites de uso; /costo abre el detalle." }
+  ]
+}

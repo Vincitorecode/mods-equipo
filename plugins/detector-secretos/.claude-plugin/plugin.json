@@ -1,0 +1,26 @@
+{
+  "name": "detector-secretos",
+  "version": "0.1.0",
+  "description": "Revisa lo que Claude escribe en archivos y lo que va a commitear, y se detiene si encuentra API keys, tokens, llaves privadas o contraseñas.",
+  "author": {
+    "name": "Victor Tinoco"
+  },
+  "userConfig": {
+    "modo": {
+      "type": "string",
+      "title": "Qué hacer al encontrar un secreto",
+      "description": "preguntar: te muestra lo encontrado y decides. bloquear: lo impide siempre.",
+      "default": "preguntar",
+      "options": [
+        "preguntar",
+        "bloquear"
+      ]
+    },
+    "archivosPermitidos": {
+      "type": "string",
+      "title": "Archivos donde sí se permiten secretos",
+      "description": "Expresión regular sobre la ruta. Por defecto los .env locales (no los .env.example).",
+      "default": "(^|/)\\.env(\\.(local|development|test))?$"
+    }
+  }
+}

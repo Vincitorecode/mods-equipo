@@ -1,0 +1,23 @@
+{
+  "name": "contexto-costo",
+  "version": "0.1.0",
+  "description": "Banda sobre el prompt con el uso del contexto, el costo de la sesión y del último turno y los límites de uso; /costo abre el detalle.",
+  "author": {
+    "name": "Victor Tinoco"
+  },
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "umbralAlerta": {
+      "type": "number",
+      "title": "Alertar al llegar a este % de contexto",
+      "description": "Al pasar este porcentaje se muestra un aviso para usar /compact o abrir una sesión nueva.",
+      "default": 80
+    },
+    "mostrarBanda": {
+      "type": "boolean",
+      "title": "Mostrar la banda sobre el prompt",
+      "description": "Si la apagas, el detalle sigue disponible con /costo.",
+      "default": true
+    }
+  }
+}
