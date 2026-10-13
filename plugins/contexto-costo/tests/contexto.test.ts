@@ -79,7 +79,7 @@ async function paso($: Engine, agentId?: string) {
   for await (const _ of s) { /* sin chunks */ }
 }
 
-test('Cada llamada muestra el contexto del agente principall', es, async ($, on) => {
+test('Cada llamada muestra el contexto del agente principal', es, async ($, on) => {
   let id = ''
   on('ui.render', { component: 'ToolUse' }, filaPropia)
   on('session.usage', async () => ({ value: usoCon(90_000, 0.5) }))
