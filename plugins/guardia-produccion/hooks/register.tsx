@@ -49,7 +49,7 @@ const T = {
   comando: { es: 'Qué vigila la guardia de producción y lo que detuvo en esta sesión', en: 'What the production guard watches and what it stopped this session' },
   titulo: { es: 'Guardia de producción', en: 'Production guard' },
   abierto: { es: 'Panel de la guardia de producción abierto.', en: 'Production guard panel opened.' },
-  detuvo: { es: '🛑 Guardia de producción detuvo este comando:', en: '🛑 Production guard stopped this command:' },
+  detuvo: { es: '🧨 Guardia de producción detuvo este comando:', en: '🧨 Production guard stopped this command:' },
   ctxKube: { es: 'Contexto de Kubernetes', en: 'Kubernetes context' },
   pregunta: { es: '¿Quieres ejecutarlo?', en: 'Do you want to run it?' },
   cabecera: { es: 'Producción', en: 'Production' },
@@ -59,7 +59,7 @@ const T = {
     es: 'guardia-produccion: hubo un error al revisar el comando, así que no se ejecutó por seguridad.',
     en: 'guardia-produccion: checking the command failed, so it was not run, to be safe.',
   },
-  activa: { es: '💂 Guardia activa', en: '💂 Guard active' },
+  activa: { es: '📡 Guardia activa', en: '📡 Guard active' },
 } satisfies Record<string, Texto>
 
 /** Lo que vigila, para el panel. */
@@ -137,7 +137,7 @@ export const register: Register = (on, options) => {
           <Text color="success" bold>{t(T.activa)}</Text>
           {ctx !== null && (esProd(ctx)
             ? <Text color="error" bold> · 🔥 k8s PROD: {ctx}</Text>
-            : <Text color="success"> · 🚢 k8s: {ctx}</Text>)}
+            : <Text color="success"> · ⚓ k8s: {ctx}</Text>)}
           {lista.length > 0 && (
             <Text color="warning">
               {' · '}
@@ -293,12 +293,12 @@ async function revisar($: EngineInterface, comando: string, aj: Ajustes): Promis
   const categoria = t(NOMBRE_CATEGORIA[riesgos[0]!.categoria])
   if (respuesta === t(T.ejecutar)) {
     await anotar($, aj, comando, riesgos, 'ejecutado')
-    $.ui.toast(L === 'es' ? `✅ Guardia: ejecutando con tu confirmación (${categoria})` : `✅ Guard: running with your confirmation (${categoria})`)
+    $.ui.toast(L === 'es' ? `🚀 Guardia: ejecutando con tu confirmación (${categoria})` : `🚀 Guard: running with your confirmation (${categoria})`)
     $.ui.log(`guardia-produccion: confirmado por el usuario → ${recortar(comando, 200)}`, { to: 'debug' })
     return undefined
   }
   await anotar($, aj, comando, riesgos, 'cancelado')
-  $.ui.toast(L === 'es' ? `⛔ Guardia: comando cancelado (${categoria}). Detalle en /guardia` : `⛔ Guard: command cancelled (${categoria}). Details in /guardia`)
+  $.ui.toast(L === 'es' ? `🧯 Guardia: comando cancelado (${categoria}). Detalle en /guardia` : `🧯 Guard: command cancelled (${categoria}). Details in /guardia`)
   return negar(riesgos, respuesta === t(T.cancelar) ? t(T.eligioCancelar) : L === 'es' ? `el usuario respondió: "${respuesta}"` : `the user answered: "${respuesta}"`)
 }
 
