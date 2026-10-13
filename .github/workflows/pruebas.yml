@@ -1,0 +1,33 @@
+name: Pruebas
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  mods:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Instalar Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Validar marketplace y mods
+        run: |
+          claude --version
+          claude plugin validate .
+          for mod in plugins/*/; do claude plugin validate "$mod"; done
+
+      - name: Correr las pruebas
+        run: for mod in plugins/*/; do claude plugin test "$mod"; done
+
+      - name: Revisar el instalador
+        run: |
+          bash -n instalar.sh
+          shellcheck -S error instalar.sh

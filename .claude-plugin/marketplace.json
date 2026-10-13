@@ -1,10 +1,25 @@
 {
   "name": "mods-equipo",
   "owner": { "name": "Victor Tinoco" },
-  "metadata": { "description": "Mods de Claude Code para el equipo de desarrollo: seguridad y visibilidad." },
+  "metadata": {
+    "description": "Mods de Claude Code: seguridad y visibilidad para cualquier equipo. · Claude Code mods: safety and visibility for any team.",
+    "version": "1.0.0"
+  },
   "plugins": [
-    { "name": "guardia-produccion", "source": "./plugins/guardia-produccion", "description": "Pide confirmación antes de deploys, migraciones, borrados, force push y kubectl contra producción." },
-    { "name": "detector-secretos", "source": "./plugins/detector-secretos", "description": "Se detiene si Claude va a escribir o commitear API keys, tokens, llaves privadas o contraseñas." },
-    { "name": "contexto-costo", "source": "./plugins/contexto-costo", "description": "Banda con uso de contexto, costo y límites de uso; /costo abre el detalle." }
+    {
+      "name": "guardia-produccion",
+      "source": "./plugins/guardia-produccion",
+      "description": "Pide confirmación antes de deploys, migraciones, borrados, force push y kubectl contra producción. · Asks before deploys, migrations, deletes, force push and kubectl on production."
+    },
+    {
+      "name": "detector-secretos",
+      "source": "./plugins/detector-secretos",
+      "description": "Se detiene si Claude va a escribir o commitear API keys, tokens, llaves privadas o contraseñas. · Stops Claude before it writes or commits API keys, tokens, private keys or passwords."
+    },
+    {
+      "name": "contexto-costo",
+      "source": "./plugins/contexto-costo",
+      "description": "Barra de contexto bajo cada llamada y banda con contexto, costo y límites; /costo abre el detalle. · Context bar under each call and a band with context, cost and limits."
+    }
   ]
 }

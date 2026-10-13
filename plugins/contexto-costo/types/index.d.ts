@@ -11,6 +11,8 @@ export type Lectura = {
   usdTurno: number
   /** Herramientas usadas en el turno. */
   herramientas: number
+  /** Número del turno en la sesión (1, 2, 3...); 0 en la lectura del arranque. */
+  numero: number
 }
 
 export type Limite = {

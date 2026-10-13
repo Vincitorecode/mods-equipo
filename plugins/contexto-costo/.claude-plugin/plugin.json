@@ -1,27 +1,48 @@
 {
   "name": "contexto-costo",
-  "version": "0.3.0",
-  "description": "Barra de contexto bajo cada llamada (principal y subagentes), banda con contexto, costo y límites; /costo abre el detalle.",
+  "version": "0.4.0",
+  "description": "Barra de contexto bajo cada llamada (principal y subagentes), banda con contexto, costo y límites; /costo abre el detalle. · Context bar under each tool call, a band with context, cost and limits; /costo opens the details.",
   "author": {
     "name": "Victor Tinoco"
   },
+  "homepage": "https://github.com/Vincitorecode/mods-equipo#contexto-costo",
+  "repository": "https://github.com/Vincitorecode/mods-equipo",
+  "license": "MIT",
+  "keywords": [
+    "contexto",
+    "context",
+    "cost",
+    "tokens",
+    "usage"
+  ],
   "types": "./types/index.d.ts",
   "userConfig": {
+    "idioma": {
+      "type": "string",
+      "title": "Idioma · Language",
+      "description": "auto: el de Claude Code o el del sistema. · auto: Claude Code's or the system's.",
+      "default": "auto",
+      "options": [
+        "auto",
+        "es",
+        "en"
+      ]
+    },
     "umbralAlerta": {
       "type": "number",
-      "title": "Alertar al llegar a este % de contexto",
+      "title": "Alertar al llegar a este % de contexto · Alert at this context %",
       "description": "Al pasar este porcentaje se muestra un aviso para usar /compact o abrir una sesión nueva.",
       "default": 80
     },
     "mostrarBanda": {
       "type": "boolean",
-      "title": "Mostrar la banda sobre el prompt",
+      "title": "Mostrar la banda sobre el prompt · Show the band above the prompt",
       "description": "Si la apagas, el detalle sigue disponible con /costo.",
       "default": true
     },
     "mostrarEnLlamadas": {
       "type": "boolean",
-      "title": "Mostrar la barra de contexto bajo cada llamada",
+      "title": "Mostrar la barra de contexto bajo cada llamada · Show the context bar under each call",
       "description": "Una línea bajo cada herramienta con el % de contexto, los tokens que quedan y qué agente la hizo.",
       "default": true
     }

@@ -14,6 +14,8 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, ModelUsage, Register } from 'claude-code'
 
 import type { Lectura, Limite, Llamada, Paso } from '../types'
+import { elegirIdioma, locale } from './idioma'
+import type { Idioma } from './idioma'
 
 const PANEL = 'contexto-costo'
 const HISTORIA = 30
@@ -36,18 +38,22 @@ export const register: Register = (on, options) => {
   const mostrarBanda = options.mostrarBanda !== false
   const mostrarEnLlamadas = options.mostrarEnLlamadas !== false
 
+  let L: Idioma = elegirIdioma(options.idioma, undefined, [])
+  const tr = (es: string, en: string) => (L === 'es' ? es : en)
+
   // Datos del turno en curso (solo los usa el hook de cierre de turno).
   let usdAlInicio = 0
   let herramientas = 0
 
   on('session.start', async ($, e, next) => {
     const r = await next(e)
-    await $.command.register({ name: 'costo', description: 'Detalle de contexto, costo por turno y límites de uso' })
+    L = await idiomaDeSesion($, options.idioma)
+    await $.command.register({ name: 'costo', description: tr('Detalle de contexto, costo por turno y límites de uso', 'Context, cost per turn and usage limits') })
     const uso = await leerUso($)
     usdAlInicio = uso?.usd ?? 0
     // La banda se ve desde el arranque, sin esperar al primer turno.
     if (uso !== undefined) {
-      await update($, actual, () => ({ tokens: uso.tokens, ventana: uso.ventana, porcentaje: uso.porcentaje, usd: uso.usd, usdTurno: 0, herramientas: 0 }))
+      await update($, actual, () => ({ tokens: uso.tokens, ventana: uso.ventana, porcentaje: uso.porcentaje, usd: uso.usd, usdTurno: 0, herramientas: 0, numero: 0 }))
       await update($, limites, () => uso.limites)
     }
     return r
@@ -58,11 +64,11 @@ export const register: Register = (on, options) => {
   on('command.run', { command: 'costo' }, async $ => {
     const uso = await leerUso($)
     try {
-      await $.ui.open({ id: PANEL, title: 'Contexto y costo', closeOnEscape: true })
+      await $.ui.open({ id: PANEL, title: tr('Contexto y costo', 'Context and cost'), closeOnEscape: true })
     } catch {
       // Superficie sin paneles: queda el resumen.
     }
-    return { text: uso === undefined ? 'Aún no hay datos de contexto y costo.' : resumen(uso, await read($, lecturas), umbral) }
+    return { text: uso === undefined ? tr('Aún no hay datos de contexto y costo.', 'No context or cost data yet.') : resumen(uso, await read($, lecturas), umbral, L) }
   })
 
   on('prompt.submit', async ($, e, next) => {
@@ -109,7 +115,7 @@ export const register: Register = (on, options) => {
           <Text dimColor>  ⎿ </Text>
           <Text color={color}>{barra(porcentaje, 10)}</Text>
           <Text color={color} bold> {porcentaje}%</Text>
-          <Text dimColor> contexto · quedan {corto(Math.max(0, foto.ventana - foto.tokens))}</Text>
+          <Text dimColor> {tr('contexto · quedan', 'context · left')} {corto(Math.max(0, foto.ventana - foto.tokens))}</Text>
           {foto.agente !== null && <Text color="cyan"> · {foto.agente}</Text>}
         </Text>
       </Box>
@@ -123,6 +129,7 @@ export const register: Register = (on, options) => {
     const uso = await leerUso($)
     if (uso === undefined) return r
 
+    const previas = await read($, lecturas)
     const lectura: Lectura = {
       tokens: uso.tokens,
       ventana: uso.ventana,
@@ -130,6 +137,7 @@ export const register: Register = (on, options) => {
       usd: uso.usd,
       usdTurno: Math.max(0, uso.usd - usdAlInicio),
       herramientas,
+      numero: (previas[previas.length - 1]?.numero ?? 0) + 1,
     }
     usdAlInicio = uso.usd
     await update($, actual, () => lectura)
@@ -139,10 +147,19 @@ export const register: Register = (on, options) => {
     // Avisos: una vez al pasar el umbral y otra al 95%. Se rearma si el contexto baja (/compact).
     const yaAvisado = await read($, alertado)
     if (lectura.porcentaje >= 95 && yaAvisado < 95) {
-      $.ui.toast(`Contexto al ${lectura.porcentaje}%: Claude compactará pronto. Usa /compact ahora o abre una sesión nueva.`, { timeoutMs: 10000 })
+      $.ui.toast(
+        tr(
+          `Contexto al ${lectura.porcentaje}%: Claude compactará pronto. Usa /compact ahora o abre una sesión nueva.`,
+          `Context at ${lectura.porcentaje}%: Claude will compact soon. Run /compact now or start a new session.`,
+        ),
+        { timeoutMs: 10000 },
+      )
       await update($, alertado, () => 95)
     } else if (lectura.porcentaje >= umbral && yaAvisado < umbral) {
-      $.ui.toast(`Contexto al ${lectura.porcentaje}%: buen momento para /compact o para una sesión nueva.`, { timeoutMs: 8000 })
+      $.ui.toast(
+        tr(`Contexto al ${lectura.porcentaje}%: buen momento para /compact o para una sesión nueva.`, `Context at ${lectura.porcentaje}%: a good time for /compact or a new session.`),
+        { timeoutMs: 8000 },
+      )
       await update($, alertado, () => umbral)
     } else if (lectura.porcentaje < umbral && yaAvisado > 0) {
       await update($, alertado, () => 0)
@@ -157,12 +174,12 @@ export const register: Register = (on, options) => {
     const ultima = (await read($, actual)) ?? lista[lista.length - 1]
     const { Box, Text, Button } = $.ui.resolve(e)
     const detalle = (
-      <Button key="detalle" label="Detalle" hotkey="c" onPress={() => $.ui.open({ id: PANEL, title: 'Contexto y costo', closeOnEscape: true })} />
+      <Button key="detalle" label={tr('Detalle', 'Details')} hotkey="c" onPress={() => $.ui.open({ id: PANEL, title: tr('Contexto y costo', 'Context and cost'), closeOnEscape: true })} />
     )
     if (ultima === undefined) {
       return (
         <Box flexDirection="row" paddingX={1}>
-          <Text dimColor>○ Contexto y costo: aparecen al terminar el primer turno · </Text>
+          <Text dimColor>{tr('○ Contexto y costo: aparecen al terminar el primer turno · ', '○ Context and cost: shown after the first turn · ')}</Text>
           {detalle}
         </Box>
       )
@@ -176,16 +193,16 @@ export const register: Register = (on, options) => {
     return (
       <Box flexDirection="row" paddingX={1}>
         <Text color={color} bold>
-          {icono(ultima.porcentaje)} Contexto {ultima.porcentaje}%
+          {icono(ultima.porcentaje)} {tr('Contexto', 'Context')} {ultima.porcentaje}%
         </Text>
         <Text dimColor> {corto(ultima.tokens)}/{corto(ultima.ventana)}</Text>
         {ancho >= 70 && <Text color={color}> {grafica(lista.slice(-10))}</Text>}
         <Text dimColor> · </Text>
-        <Text>Sesión {usd(ultima.usd)}</Text>
-        {ancho >= 90 && <Text dimColor> · último turno {usd(ultima.usdTurno)}</Text>}
+        <Text>{tr('Sesión', 'Session')} {usd(ultima.usd)}</Text>
+        {ancho >= 90 && <Text dimColor> · {tr('último turno', 'last turn')} {usd(ultima.usdTurno)}</Text>}
         {limite !== undefined && ancho >= 110 && (
           <Text color={limite.porcentaje >= 80 ? 'red' : undefined} dimColor={limite.porcentaje < 80}>
-            {' '}· límite {nombreLimite(limite.tipo)} {Math.round(limite.porcentaje)}%
+            {' '}· {tr('límite', 'limit')} {nombreLimite(limite.tipo, L)} {Math.round(limite.porcentaje)}%
           </Text>
         )}
         {ultima.porcentaje >= umbral && <Text color="red"> → /compact</Text>}
@@ -206,58 +223,58 @@ export const register: Register = (on, options) => {
     if (ultima === undefined) {
       return (
         <Box flexDirection="column">
-          <Text dimColor>Aún no hay datos: aparecen al terminar el primer turno.</Text>
+          <Text dimColor>{tr('Aún no hay datos: aparecen al terminar el primer turno.', 'No data yet: it shows up after the first turn.')}</Text>
         </Box>
       )
     }
 
     const filas = Math.max(3, (e.viewport?.rows ?? 30) - 16)
     const turnos = lista.slice(-filas)
-    const primero = lista.length - turnos.length + 1
     const color = colorDe(ultima.porcentaje, umbral)
     const caro = turnos.reduce((m, l) => Math.max(m, l.usdTurno), 0)
+    const loc = locale(L)
 
     return (
       <Box flexDirection="column">
-        <Text bold>Contexto</Text>
+        <Text bold>{tr('Contexto', 'Context')}</Text>
         <Text>
           <Text color={color}>{barra(ultima.porcentaje, Math.min(40, ancho - 12))}</Text> {ultima.porcentaje}%
         </Text>
         <Text dimColor>
-          {ultima.tokens.toLocaleString('es-MX')} de {ultima.ventana.toLocaleString('es-MX')} tokens · alerta al {umbral}%
+          {ultima.tokens.toLocaleString(loc)} {tr('de', 'of')} {ultima.ventana.toLocaleString(loc)} tokens · {tr('alerta al', 'alert at')} {umbral}%
         </Text>
 
         <Box marginTop={1} flexDirection="column">
-          <Text bold>Costo</Text>
+          <Text bold>{tr('Costo', 'Cost')}</Text>
           <Text>
-            Sesión: {usd(ultima.usd)} · promedio por turno: {usd(ultima.usd / Math.max(1, lista.length))}
+            {tr('Sesión', 'Session')}: {usd(ultima.usd)} · {tr('promedio por turno', 'average per turn')}: {usd(ultima.usd / Math.max(1, ultima.numero))}
           </Text>
-          <Text dimColor>Equivalente en precio de API, como /cost.</Text>
+          <Text dimColor>{tr('Equivalente en precio de API, como /cost.', 'API-price equivalent, like /cost.')}</Text>
         </Box>
 
         {lims.length > 0 && (
           <Box marginTop={1} flexDirection="column">
-            <Text bold>Límites de uso</Text>
+            <Text bold>{tr('Límites de uso', 'Usage limits')}</Text>
             {lims.map(l => (
               <Text key={l.tipo}>
                 <Text color={l.porcentaje >= 80 ? 'red' : l.porcentaje >= 50 ? 'yellow' : 'green'}>{barra(l.porcentaje, 20)}</Text>{' '}
-                {nombreLimite(l.tipo)} {Math.round(l.porcentaje)}%{l.reinicia ? <Text dimColor> · reinicia {hora(l.reinicia)}</Text> : null}
+                {nombreLimite(l.tipo, L)} {Math.round(l.porcentaje)}%{l.reinicia ? <Text dimColor> · {tr('reinicia', 'resets')} {hora(l.reinicia, L)}</Text> : null}
               </Text>
             ))}
           </Box>
         )}
 
         <Box marginTop={1} flexDirection="column">
-          <Text bold>Por turno</Text>
-          <Text dimColor>  #   contexto   costo     herramientas</Text>
-          {turnos.map((l, i) => (
-            <Text key={`t${primero + i}`} color={l.usdTurno === caro && caro > 0 ? 'yellow' : undefined}>
-              {String(primero + i).padStart(3)}  {`${l.porcentaje}%`.padStart(5)} {corto(l.tokens).padStart(5)}  {usd(l.usdTurno).padStart(7)}   {l.herramientas}
+          <Text bold>{tr('Por turno', 'Per turn')}</Text>
+          <Text dimColor>{tr('  #   contexto   costo     herramientas', '  #   context    cost      tools')}</Text>
+          {turnos.map(l => (
+            <Text key={`t${l.numero}`} color={l.usdTurno === caro && caro > 0 ? 'yellow' : undefined}>
+              {String(l.numero).padStart(3)}  {`${l.porcentaje}%`.padStart(5)} {corto(l.tokens).padStart(5)}  {usd(l.usdTurno).padStart(7)}   {l.herramientas}
             </Text>
           ))}
         </Box>
         <Box marginTop={1}>
-          <Text dimColor>Tip: un turno caro suele venir de leer archivos grandes; pide a Claude rangos o resúmenes.</Text>
+          <Text dimColor>{tr('Tip: un turno caro suele venir de leer archivos grandes; pide a Claude rangos o resúmenes.', 'Tip: an expensive turn usually comes from reading large files; ask Claude for ranges or summaries.')}</Text>
         </Box>
       </Box>
     )
@@ -265,6 +282,14 @@ export const register: Register = (on, options) => {
 }
 
 type Uso = { tokens: number; ventana: number; porcentaje: number; usd: number; limites: Limite[] }
+
+async function idiomaDeSesion($: EngineInterface, opcion: unknown): Promise<Idioma> {
+  if (opcion === 'es' || opcion === 'en') return opcion
+  const ajuste = await $.settings.read().then(s => s.language, () => undefined)
+  const lcAll = await $.env.get('LC_ALL').catch(() => undefined)
+  const lang = await $.env.get('LANG').catch(() => undefined)
+  return elegirIdioma(opcion, ajuste, [lcAll, lang])
+}
 
 async function leerUso($: EngineInterface): Promise<Uso | undefined> {
   try {
@@ -285,16 +310,26 @@ async function leerUso($: EngineInterface): Promise<Uso | undefined> {
 }
 
 /** El mismo detalle del panel, en texto plano. */
-function resumen(uso: Uso, lista: Lectura[], umbral: number): string {
+function resumen(uso: Uso, lista: Lectura[], umbral: number, L: Idioma): string {
+  const es = L === 'es'
+  const loc = locale(L)
+  const turnos = lista[lista.length - 1]?.numero ?? 0
   const lineas = [
-    `Contexto: ${uso.porcentaje}% (${uso.tokens.toLocaleString('es-MX')} de ${uso.ventana.toLocaleString('es-MX')} tokens)${uso.porcentaje >= umbral ? ' → conviene /compact' : ''}`,
-    `Costo de la sesión: ${usd(uso.usd)}${lista.length > 0 ? ` · promedio por turno ${usd(uso.usd / lista.length)}` : ''} (equivalente en precio de API)`,
+    es
+      ? `Contexto: ${uso.porcentaje}% (${uso.tokens.toLocaleString(loc)} de ${uso.ventana.toLocaleString(loc)} tokens)${uso.porcentaje >= umbral ? ' → conviene /compact' : ''}`
+      : `Context: ${uso.porcentaje}% (${uso.tokens.toLocaleString(loc)} of ${uso.ventana.toLocaleString(loc)} tokens)${uso.porcentaje >= umbral ? ' → consider /compact' : ''}`,
+    es
+      ? `Costo de la sesión: ${usd(uso.usd)}${turnos > 0 ? ` · promedio por turno ${usd(uso.usd / turnos)}` : ''} (equivalente en precio de API)`
+      : `Session cost: ${usd(uso.usd)}${turnos > 0 ? ` · average per turn ${usd(uso.usd / turnos)}` : ''} (API-price equivalent)`,
   ]
   for (const l of uso.limites) {
-    lineas.push(`Límite ${nombreLimite(l.tipo)}: ${Math.round(l.porcentaje)}%${l.reinicia ? ` · reinicia ${hora(l.reinicia)}` : ''}`)
+    const reinicia = l.reinicia ? ` · ${es ? 'reinicia' : 'resets'} ${hora(l.reinicia, L)}` : ''
+    lineas.push(`${es ? 'Límite' : 'Limit'} ${nombreLimite(l.tipo, L)}: ${Math.round(l.porcentaje)}%${reinicia}`)
   }
   const caro = lista.reduce<Lectura | undefined>((m, l) => (m === undefined || l.usdTurno > m.usdTurno ? l : m), undefined)
-  if (caro !== undefined && caro.usdTurno > 0) lineas.push(`Turno más caro: ${usd(caro.usdTurno)} (${caro.herramientas} herramientas)`)
+  if (caro !== undefined && caro.usdTurno > 0) {
+    lineas.push(es ? `Turno más caro: #${caro.numero} ${usd(caro.usdTurno)} (${caro.herramientas} herramientas)` : `Most expensive turn: #${caro.numero} ${usd(caro.usdTurno)} (${caro.herramientas} tools)`)
+  }
   return lineas.join('\n')
 }
 
@@ -305,7 +340,7 @@ async function anotarPaso($: EngineInterface, agentId: string | undefined, uso: 
   await update($, pasos, m => ({ ...m, [agentId ?? PRINCIPAL]: { tokens, modelo: uso.model } }))
   if (agentId !== undefined && (await read($, nombres))[agentId] === undefined) {
     const info = (await $.agent.list()).find(a => a.id === agentId)
-    const nombre = info === undefined ? 'subagente' : info.description ? `${info.type}: ${info.description}` : info.type
+    const nombre = info === undefined ? 'subagent' : info.description ? `${info.type}: ${info.description}` : info.type
     await update($, nombres, m => ({ ...m, [agentId]: nombre }))
   }
 }
@@ -320,7 +355,7 @@ async function anotarLlamada($: EngineInterface, id: string, agentId: string | u
   // La ventana del principal la da la sesión; la de un subagente se deduce de su modelo.
   const ventana =
     agentId === undefined || paso.modelo === principal?.modelo ? ventanaPrincipal : paso.modelo.includes('[1m]') ? 1_000_000 : 200_000
-  const agente = agentId === undefined ? null : ((await read($, nombres))[agentId] ?? 'subagente')
+  const agente = agentId === undefined ? null : ((await read($, nombres))[agentId] ?? 'subagent')
   const llamada: Llamada = { id, agente, tokens: paso.tokens, ventana }
   await update($, llamadas, lista => [...lista, llamada].slice(-MAX_LLAMADAS))
 }
@@ -361,11 +396,18 @@ function limiteMasAlto(lims: Limite[]): Limite | undefined {
   return lims.reduce<Limite | undefined>((m, l) => (m === undefined || l.porcentaje > m.porcentaje ? l : m), undefined)
 }
 
-function nombreLimite(tipo: string): string {
-  return { five_hour: '5h', seven_day: 'semanal', seven_day_opus: 'semanal Opus', spend_limit: 'gasto' }[tipo] ?? tipo
+function nombreLimite(tipo: string, L: Idioma): string {
+  const nombres: Record<string, [string, string]> = {
+    five_hour: ['5h', '5h'],
+    seven_day: ['semanal', 'weekly'],
+    seven_day_opus: ['semanal Opus', 'weekly Opus'],
+    spend_limit: ['gasto', 'spend'],
+  }
+  const n = nombres[tipo]
+  return n === undefined ? tipo : n[L === 'es' ? 0 : 1]
 }
 
-function hora(iso: string): string {
+function hora(iso: string, L: Idioma): string {
   const d = new Date(iso)
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString('es-MX', { weekday: 'short', hour: '2-digit', minute: '2-digit' })
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString(locale(L), { weekday: 'short', hour: '2-digit', minute: '2-digit' })
 }

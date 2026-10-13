@@ -1,22 +1,58 @@
 {
   "name": "guardia-produccion",
-  "version": "0.2.0",
-  "description": "Detiene comandos riesgosos (deploys, migraciones, borrados, force push, kubectl en prod) y pide confirmación; /guardia muestra lo que vigila y lo que detuvo.",
+  "version": "0.3.0",
+  "description": "Detiene comandos riesgosos (deploys, migraciones, borrados, force push, kubectl en prod) y pide confirmación; /guardia muestra lo que vigila y lo que detuvo. · Stops risky commands (deploys, migrations, deletes, force push, kubectl on prod) and asks first.",
   "author": {
     "name": "Victor Tinoco"
   },
+  "homepage": "https://github.com/Vincitorecode/mods-equipo#guardia-produccion",
+  "repository": "https://github.com/Vincitorecode/mods-equipo",
+  "license": "MIT",
+  "keywords": ["seguridad", "security", "production", "kubernetes", "git", "terraform"],
   "userConfig": {
+    "idioma": {
+      "type": "string",
+      "title": "Idioma · Language",
+      "description": "auto: el de Claude Code o el del sistema. · auto: Claude Code's or the system's.",
+      "default": "auto",
+      "options": ["auto", "es", "en"]
+    },
     "patronProduccion": {
       "type": "string",
-      "title": "Patrón de producción",
-      "description": "Expresión regular que identifica entornos de producción en contextos de Kubernetes y en los comandos.",
+      "title": "Patrón de producción · Production pattern",
+      "description": "Regex que identifica producción en contextos de Kubernetes y en los comandos. · Regex that identifies production in Kubernetes contexts and commands.",
       "default": "prod|production|prd|live"
+    },
+    "ramasProtegidas": {
+      "type": "string",
+      "title": "Ramas protegidas · Protected branches",
+      "description": "Regex con las ramas a las que no se hace push sin confirmar (ej. main|master|develop|release/.*). · Branches that need confirmation to push to.",
+      "default": "main|master"
     },
     "patronesExtra": {
       "type": "string",
-      "title": "Comandos extra a vigilar",
-      "description": "Expresiones regulares adicionales separadas por ;; (ej. ./scripts/deploy.sh;;make release).",
+      "title": "Comandos extra a vigilar · Extra commands to watch",
+      "description": "Regex separadas por ;; (ej. ./scripts/deploy.sh;;make release). · Regexes separated by ;;",
       "default": ""
+    },
+    "comandosPermitidos": {
+      "type": "string",
+      "title": "Comandos que nunca se detienen · Commands never stopped",
+      "description": "Regex separadas por ;; para tus falsos positivos (ej. rm -rf \\./generated;;./deploy-staging.sh). · Regexes separated by ;; for your false positives.",
+      "default": ""
+    },
+    "categoriasIgnoradas": {
+      "type": "string",
+      "title": "Categorías apagadas · Disabled categories",
+      "description": "Separadas por comas: infraestructura, kubernetes, git, bd, migracion, nube, despliegue, publicacion, archivos, docker, produccion. · Comma separated.",
+      "default": ""
+    },
+    "sinRespuesta": {
+      "type": "string",
+      "title": "Sin nadie a quien preguntar (claude -p, CI) · With nobody to ask",
+      "description": "bloquear: no ejecuta (más seguro). permitir: ejecuta y lo anota. · bloquear = block, permitir = allow.",
+      "default": "bloquear",
+      "options": ["bloquear", "permitir"]
     }
   },
   "types": "./types/index.d.ts"

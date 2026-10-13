@@ -7,8 +7,8 @@ export type Evento = {
   categorias: string[]
   /** Motivos legibles. */
   motivos: string[]
-  /** Qué pasó: lo ejecutaste, lo cancelaste o no hubo a quién preguntar. */
-  decision: 'ejecutado' | 'cancelado' | 'sin respuesta'
+  /** Qué pasó: lo ejecutaste, lo cancelaste, o no hubo a quién preguntar (y se bloqueó o se permitió según la opción). */
+  decision: 'ejecutado' | 'cancelado' | 'sin respuesta' | 'sin respuesta (permitido)'
 }
 
 declare module 'claude-code' {

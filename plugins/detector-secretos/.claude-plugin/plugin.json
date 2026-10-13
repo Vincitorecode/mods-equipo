@@ -1,26 +1,40 @@
 {
   "name": "detector-secretos",
-  "version": "0.2.0",
-  "description": "Revisa lo que Claude escribe y lo que va a commitear, y se detiene si encuentra API keys, tokens, llaves privadas o contraseñas; /secretos muestra el historial.",
+  "version": "0.3.0",
+  "description": "Revisa lo que Claude escribe y lo que va a commitear, y se detiene si encuentra API keys, tokens, llaves privadas o contraseñas; /secretos muestra el historial. · Stops Claude before it writes or commits API keys, tokens, private keys or passwords.",
   "author": {
     "name": "Victor Tinoco"
   },
+  "homepage": "https://github.com/Vincitorecode/mods-equipo#detector-secretos",
+  "repository": "https://github.com/Vincitorecode/mods-equipo",
+  "license": "MIT",
+  "keywords": ["seguridad", "security", "secrets", "api-keys", "git"],
   "userConfig": {
+    "idioma": {
+      "type": "string",
+      "title": "Idioma · Language",
+      "description": "auto: el de Claude Code o el del sistema. · auto: Claude Code's or the system's.",
+      "default": "auto",
+      "options": ["auto", "es", "en"]
+    },
     "modo": {
       "type": "string",
-      "title": "Qué hacer al encontrar un secreto",
-      "description": "preguntar: te muestra lo encontrado y decides. bloquear: lo impide siempre.",
+      "title": "Qué hacer al encontrar un secreto · What to do on a secret",
+      "description": "preguntar: te muestra lo encontrado y decides. bloquear: lo impide siempre. · preguntar = ask, bloquear = block.",
       "default": "preguntar",
-      "options": [
-        "preguntar",
-        "bloquear"
-      ]
+      "options": ["preguntar", "bloquear"]
     },
     "archivosPermitidos": {
       "type": "string",
-      "title": "Archivos donde sí se permiten secretos",
-      "description": "Expresión regular sobre la ruta. Por defecto los .env locales (no los .env.example).",
+      "title": "Archivos donde sí se permiten secretos · Files where secrets are allowed",
+      "description": "Regex sobre la ruta. Por defecto los .env locales (no los .env.example). · Regex on the path; local .env files by default.",
       "default": "(^|/)\\.env(\\.(local|development|test))?$"
+    },
+    "tiposIgnorados": {
+      "type": "string",
+      "title": "Tipos que no se revisan · Types not checked",
+      "description": "Ids separados por comas, ej. jwt, asignacion (la lista está en el README). · Comma-separated ids, e.g. jwt, asignacion.",
+      "default": ""
     }
   },
   "types": "./types/index.d.ts"
