@@ -2,6 +2,9 @@
 
 ## 2026-10-13
 
+### guardia-produccion 0.4.2 · detector-secretos 0.4.2
+- Banner estilo terminal en `/guardia` y `/secretos` (GUARD · SECRETS). Se pone rojo o amarillo según el estado y se oculta si el panel es angosto.
+
 ### guardia-produccion 0.4.1 · detector-secretos 0.4.1
 - Emojis nuevos que se ven completos en cualquier terminal: guardia 📡 🧨 🚀 🧯 ⚓ 🔥, secretos 🥷 🚨 🔒.
 

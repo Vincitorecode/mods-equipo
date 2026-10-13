@@ -39,6 +39,11 @@ const PANEL = 'guardia-produccion'
 const HISTORIA = 50
 /** Motivos que caben en el diálogo; el resto se ve en /guardia. */
 const MAX_MOTIVOS = 3
+/** Panel más angosto que esto: sin el banner, para que quepa el texto. */
+const ANCHO_CON_BANNER = 64
+
+/** Banner del panel /guardia (siempre en inglés). */
+const BANNER = ['█▀▀ █ █ ▄▀█ █▀█ █▀▄', '█▄█ █▄█ █▀█ █▀▄ █▄▀']
 
 const eventos = atom({ plugin: 'guardia-produccion', key: 'eventos' } as const, [] as Evento[])
 const kube = atom({ plugin: 'guardia-produccion', key: 'kube' } as const, null as string | null)
@@ -160,6 +165,8 @@ export const register: Register = (on, options) => {
     const lista = await read($, eventos)
     const ctx = await read($, kube)
     const ancho = Math.max(30, (e.props.bodyColumns ?? 60) - 2)
+    // Lo que queda junto al banner.
+    const anchoInfo = ancho >= ANCHO_CON_BANNER ? ancho - 30 : ancho
     const filas = Math.max(3, Math.floor(((e.viewport?.rows ?? 30) - 24) / 3))
     const recientes = lista.slice(-filas).reverse()
     const ejecutados = lista.filter(l => l.decision === 'ejecutado' || l.decision === 'sin respuesta (permitido)').length
@@ -170,7 +177,14 @@ export const register: Register = (on, options) => {
 
     return (
       <Box flexDirection="column">
-        <Box borderStyle="round" borderColor={esProd(ctx) ? 'red' : 'green'} paddingX={1} flexDirection="column">
+        <Box borderStyle="round" borderColor={esProd(ctx) ? 'red' : 'green'} paddingX={1} flexDirection="row">
+          {ancho >= ANCHO_CON_BANNER && (
+            <Box flexDirection="column" marginRight={3}>
+              {BANNER.map((l, i) => <Text key={`b${i}`} color={esProd(ctx) ? 'red' : 'green'}>{l}</Text>)}
+              <Text dimColor>{esProd(ctx) ? 'root@guard:~# PROD!_' : 'root@guard:~# watch_'}</Text>
+            </Box>
+          )}
+          <Box flexDirection="column" flexShrink={1}>
           <Text bold color="green">{t(T.activa)}</Text>
           <Text>
             <Text dimColor>Kubernetes: </Text>
@@ -188,7 +202,7 @@ export const register: Register = (on, options) => {
                   config.permitidos.length > 0 ? (es ? `${config.permitidos.length} permitido${s(config.permitidos.length)}` : `${config.permitidos.length} allowed`) : '',
                   config.ignoradas.size > 0 ? `${es ? 'apagadas' : 'off'}: ${[...config.ignoradas].map(c => t(NOMBRE_CATEGORIA[c])).join(', ')}` : '',
                 ].filter(x => x !== '').join(' · '),
-                ancho,
+                anchoInfo,
               )}
             </Text>
           )}
@@ -197,6 +211,7 @@ export const register: Register = (on, options) => {
             {es ? `${lista.length} detenido${s(lista.length)} · ` : `${lista.length} stopped · `}
             <Text color="green">{es ? `${detenidos} cancelado${s(detenidos)}` : `${detenidos} cancelled`}</Text> · <Text color="yellow">{es ? `${ejecutados} ejecutado${s(ejecutados)}` : `${ejecutados} ran`}</Text>
           </Text>
+          </Box>
         </Box>
 
         <Box marginTop={1} flexDirection="column">

@@ -1,6 +1,6 @@
 {
   "name": "detector-secretos",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Revisa lo que Claude escribe y lo que va a commitear, y se detiene si encuentra API keys, tokens, llaves privadas o contraseñas; /secretos muestra el historial. · Stops Claude before it writes or commits API keys, tokens, private keys or passwords.",
   "author": {
     "name": "Victor Tinoco"

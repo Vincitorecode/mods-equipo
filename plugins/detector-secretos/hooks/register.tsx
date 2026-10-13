@@ -31,6 +31,11 @@ const HISTORIA = 50
 const MAX_NUEVOS = 50
 /** Hallazgos que caben en el diálogo; el resto se ve en /secretos. */
 const MAX_DIALOGO = 4
+/** Panel más angosto que esto: sin el banner, para que quepa el texto. */
+const ANCHO_CON_BANNER = 64
+
+/** Banner del panel /secretos (siempre en inglés). */
+const BANNER = ['█▀ █▀▀ █▀▀ █▀█ █▀▀ ▀█▀ █▀', '▄█ ██▄ █▄▄ █▀▄ ██▄  █  ▄█']
 
 const T = {
   permitir: { es: 'Permitir esta vez', en: 'Allow this time' },
@@ -154,6 +159,8 @@ export const register: Register = (on, options) => {
     const lista = await read($, detecciones)
     const total = await read($, revisados)
     const ancho = Math.max(30, (e.props.bodyColumns ?? 60) - 2)
+    // Lo que queda junto al banner.
+    const anchoInfo = ancho >= ANCHO_CON_BANNER ? ancho - 30 : ancho
     const filas = Math.max(2, Math.floor(((e.viewport?.rows ?? 30) - 20) / 4))
     const recientes = lista.slice(-filas).reverse()
     const bloqueados = lista.filter(d => d.decision === 'bloqueado').length
@@ -162,7 +169,14 @@ export const register: Register = (on, options) => {
 
     return (
       <Box flexDirection="column">
-        <Box borderStyle="round" borderColor={lista.length > 0 ? 'yellow' : 'green'} paddingX={1} flexDirection="column">
+        <Box borderStyle="round" borderColor={lista.length > 0 ? 'yellow' : 'green'} paddingX={1} flexDirection="row">
+          {ancho >= ANCHO_CON_BANNER && (
+            <Box flexDirection="column" marginRight={3}>
+              {BANNER.map((l, i) => <Text key={`b${i}`} color={lista.length > 0 ? 'yellow' : 'green'}>{l}</Text>)}
+              <Text dimColor>{lista.length > 0 ? '[ •••••••• ] caught_' : '[ •••••••• ] locked_'}</Text>
+            </Box>
+          )}
+          <Box flexDirection="column" flexShrink={1}>
           <Text bold color="green">{es ? '🥷 Detector de secretos activo' : '🥷 Secret detector active'}</Text>
           <Text>
             <Text dimColor>{es ? 'Modo: ' : 'Mode: '}</Text>
@@ -171,14 +185,15 @@ export const register: Register = (on, options) => {
           </Text>
           <Text>
             <Text dimColor>{es ? 'Se permiten en: ' : 'Allowed in: '}</Text>
-            {recortar(`/${permitidos.source}/`, ancho - 18)}
+            {recortar(`/${permitidos.source}/`, anchoInfo - 18)}
           </Text>
-          {ignorados.size > 0 && <Text dimColor>{recortar(`${es ? 'Tipos apagados' : 'Disabled types'}: ${[...ignorados].join(', ')}`, ancho)}</Text>}
+          {ignorados.size > 0 && <Text dimColor>{recortar(`${es ? 'Tipos apagados' : 'Disabled types'}: ${[...ignorados].join(', ')}`, anchoInfo)}</Text>}
           <Text>
             <Text dimColor>{es ? 'Esta sesión: ' : 'This session: '}</Text>
             {es ? `${total} revisión${total === 1 ? '' : 'es'} · ${lista.length} con secretos · ` : `${total} check${s(total)} · ${lista.length} with secrets · `}
             <Text color="green">{es ? `${bloqueados} bloqueada${s(bloqueados)}` : `${bloqueados} blocked`}</Text> · <Text color="yellow">{es ? `${permitidas} permitida${s(permitidas)}` : `${permitidas} allowed`}</Text>
           </Text>
+          </Box>
         </Box>
 
         <Box marginTop={1} flexDirection="column">
