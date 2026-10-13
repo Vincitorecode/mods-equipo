@@ -228,3 +228,12 @@ describe('interfaz', () => {
     await ui.unmount()
   })
 })
+
+test('la franja sobre el prompt dice que la guardia está activa, en verde', { options: { idioma: 'es' } }, async ($, on) => {
+  on('ui.render', async ($, e) => $.ui.resolve(e).Box({}))
+  const ui = await $.ui.mount({ plugin: 'guardia-produccion', surface: 'terminal', component: 'AbovePrompt', props: { bodyColumns: 120 } as never })
+  const texto = await ui.find({ type: 'Text', text: /Guardia activa/ })
+  expect(texto).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /\/guardia/ })).toBeDefined()
+  await ui.unmount()
+})

@@ -182,3 +182,11 @@ describe('interfaz', () => {
     await ui.unmount()
   })
 })
+
+test('la franja sobre el prompt muestra el modo de secretos', { options: { idioma: 'es' } }, async ($, on) => {
+  on('ui.render', async ($, e) => $.ui.resolve(e).Box({}))
+  const ui = await $.ui.mount({ plugin: 'detector-secretos', surface: 'terminal', component: 'AbovePrompt', props: { bodyColumns: 120 } as never })
+  expect(await ui.find({ type: 'Text', text: /Secretos: preguntar/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /\/secretos/ })).toBeDefined()
+  await ui.unmount()
+})

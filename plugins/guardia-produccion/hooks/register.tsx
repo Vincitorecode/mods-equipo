@@ -59,7 +59,7 @@ const T = {
     es: 'guardia-produccion: hubo un error al revisar el comando, así que no se ejecutó por seguridad.',
     en: 'guardia-produccion: checking the command failed, so it was not run, to be safe.',
   },
-  activa: { es: '🛡 Guardia activa', en: '🛡 Guard active' },
+  activa: { es: '🛡️ Guardia activa', en: '🛡️ Guard active' },
 } satisfies Record<string, Texto>
 
 /** Lo que vigila, para el panel. */
@@ -97,14 +97,14 @@ export const register: Register = (on, options) => {
     await $.command.register({ name: 'guardia', description: t(T.comando) })
     const ctx = await contextoKubeActual($)
     await update($, kube, () => ctx ?? null)
-    await pintarEstado($, config, L)
+    $.ui.invalidate('ui.render')
     return r
   })
 
   on('command.run', { command: 'guardia' }, async $ => {
     const ctx = await contextoKubeActual($)
     await update($, kube, () => ctx ?? null)
-    await pintarEstado($, config, L)
+    $.ui.invalidate('ui.render')
     await $.ui.open({ id: PANEL, title: t(T.titulo), closeOnEscape: true })
     return { text: t(T.abierto) }
   })
@@ -120,6 +120,38 @@ export const register: Register = (on, options) => {
     const motivo = await revisar($, String((e as { command?: unknown }).command ?? ''), { config, L, permitirSinRespuesta })
     return motivo === undefined ? next(e) : { deny: motivo }
   }).catch(($, e, next) => (next.called || String(e.tool) !== 'PowerShell' ? next(e) : { deny: t(T.error) }))
+
+  // ---- Franja sobre el prompt: estado en color, encima de lo que pinten los demás ----
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    const abajo = await next(e)
+    if (e.props.hasSurvey) return abajo
+    const { Box, Text } = $.ui.resolve(e)
+    const es = L === 'es'
+    const lista = await read($, eventos)
+    const ctx = await read($, kube)
+    const cancelados = lista.filter(l => l.decision === 'cancelado' || l.decision === 'sin respuesta').length
+    const s = (n: number) => (n === 1 ? '' : 's')
+    return (
+      <Box flexDirection="column">
+        <Box flexDirection="row" paddingX={1}>
+          <Text color="success" bold>{t(T.activa)}</Text>
+          {ctx !== null && (esProd(ctx)
+            ? <Text color="error" bold> · 🚨 k8s PROD: {ctx}</Text>
+            : <Text color="success"> · ☸️ k8s: {ctx}</Text>)}
+          {lista.length > 0 && (
+            <Text color="warning">
+              {' · '}
+              {es
+                ? `${lista.length} detenido${s(lista.length)}${cancelados > 0 ? ` (${cancelados} cancelado${s(cancelados)})` : ''}`
+                : `${lista.length} stopped${cancelados > 0 ? ` (${cancelados} cancelled)` : ''}`}
+            </Text>
+          )}
+          <Text dimColor> · /guardia</Text>
+        </Box>
+        {abajo}
+      </Box>
+    )
+  })
 
   // ---- Panel /guardia ----
   on('ui.render', { component: 'Pane', requestId: PANEL }, async ($, e) => {
@@ -195,7 +227,7 @@ export const register: Register = (on, options) => {
 
         {lista.length > 0 && (
           <Box marginTop={1}>
-            <Button key="limpiar" label={es ? 'Limpiar historial' : 'Clear history'} hotkey="l" onPress={async () => { await update($, eventos, () => []); await pintarEstado($, config, L) }} />
+            <Button key="limpiar" label={es ? 'Limpiar historial' : 'Clear history'} hotkey="l" onPress={async () => { await update($, eventos, () => []); $.ui.invalidate('ui.render') }} />
           </Box>
         )}
       </Box>
@@ -284,7 +316,7 @@ async function anotar($: EngineInterface, aj: Ajustes, comando: string, riesgos:
       decision,
     }
     await update($, eventos, lista => [...lista, evento].slice(-HISTORIA))
-    await pintarEstado($, config, L)
+    $.ui.invalidate('ui.render')
   } catch {
     // nada
   }
@@ -297,26 +329,6 @@ async function idiomaDeSesion($: EngineInterface, opcion: unknown): Promise<Idio
   const lcAll = await $.env.get('LC_ALL').catch(() => undefined)
   const lang = await $.env.get('LANG').catch(() => undefined)
   return elegirIdioma(opcion, ajuste, [lcAll, lang])
-}
-
-/** Pinta la línea de estado bajo el prompt. */
-async function pintarEstado($: EngineInterface, config: Config, L: Idioma): Promise<void> {
-  const es = L === 'es'
-  const lista = await read($, eventos)
-  const ctx = await read($, kube)
-  const partes = [es ? '🛡 Guardia activa' : '🛡 Guard active']
-  if (ctx !== null) partes.push(config.prod.test(ctx) ? `⚠ k8s PROD: ${ctx}` : `k8s: ${ctx}`)
-  if (lista.length > 0) {
-    const cancelados = lista.filter(l => l.decision === 'cancelado' || l.decision === 'sin respuesta').length
-    const s = (n: number) => (n === 1 ? '' : 's')
-    partes.push(
-      es
-        ? `${lista.length} detenido${s(lista.length)}${cancelados > 0 ? ` (${cancelados} cancelado${s(cancelados)})` : ''}`
-        : `${lista.length} stopped${cancelados > 0 ? ` (${cancelados} cancelled)` : ''}`,
-    )
-  }
-  partes.push('/guardia')
-  $.ui.status(partes.join(' · '))
 }
 
 /** El contexto actual de kubectl, o undefined si no hay kubectl o falla. */

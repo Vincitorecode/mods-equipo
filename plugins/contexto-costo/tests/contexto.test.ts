@@ -1,7 +1,10 @@
 import { expect, test } from 'claude-code/testing'
-import type { Engine } from 'claude-code/testing'
+import type { Engine, On } from 'claude-code/testing'
 
 const es = { options: { idioma: 'es' } }
+
+/** Lo que el motor pinta bajo la banda: aquí, nada. */
+const motorVacio = (on: On) => on('ui.render', async ($, e) => $.ui.resolve(e).Box({}))
 
 const usoCon = (tokens: number, usd: number) => ({
   startedAt: 0,
@@ -11,6 +14,7 @@ const usoCon = (tokens: number, usd: number) => ({
 })
 
 test('la banda muestra contexto, costo y la alerta de /compact', es, async ($, on) => {
+  motorVacio(on)
   let uso = usoCon(40_000, 0.5)
   on('session.usage', async () => ({ value: uso }))
   on('turn.complete', async () => ({ text: 'ok' }))
@@ -48,7 +52,8 @@ test('el panel muestra el detalle por turno y los límites', es, async ($, on) =
   }
 })
 
-test('la banda se ve antes del primer turno', es, async $ => {
+test('la banda se ve antes del primer turno', es, async ($, on) => {
+  motorVacio(on)
   const ui = await $.ui.mount({ plugin: 'contexto-costo', surface: 'terminal', component: 'AbovePrompt', props: { bodyColumns: 120 } as never })
   expect(await ui.find({ type: 'Text', text: /aparecen al terminar el primer turno/ })).toBeDefined()
   expect(await ui.find({ type: 'Button', key: 'detalle' })).toBeDefined()
@@ -133,6 +138,7 @@ test('después de 30 turnos numera y promedia bien', es, async ($, on) => {
 })
 
 test('en inglés', { options: { idioma: 'en' } }, async ($, on) => {
+  motorVacio(on)
   on('session.usage', async () => ({ value: usoCon(60_000, 0.8) }))
   on('turn.complete', async () => ({ text: 'ok' }))
   await $.turn.complete({ reason: 'answer', answer: 'ok', durationMs: 1000, isAborted: false, turnId: 't' })

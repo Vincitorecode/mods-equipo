@@ -169,15 +169,22 @@ export const register: Register = (on, options) => {
 
   // ---- Banda sobre el prompt ----
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    if (!mostrarBanda || e.props.hasSurvey) return next(e)
+    const abajo = await next(e)
+    if (!mostrarBanda || e.props.hasSurvey) return abajo
     const lista = await read($, lecturas)
     const ultima = (await read($, actual)) ?? lista[lista.length - 1]
     const { Box, Text, Button } = $.ui.resolve(e)
+    const conAbajo = (fila: unknown) => (
+      <Box flexDirection="column">
+        {fila}
+        {abajo}
+      </Box>
+    )
     const detalle = (
       <Button key="detalle" label={tr('Detalle', 'Details')} hotkey="c" onPress={() => $.ui.open({ id: PANEL, title: tr('Contexto y costo', 'Context and cost'), closeOnEscape: true })} />
     )
     if (ultima === undefined) {
-      return (
+      return conAbajo(
         <Box flexDirection="row" paddingX={1}>
           <Text dimColor>{tr('○ Contexto y costo: aparecen al terminar el primer turno · ', '○ Context and cost: shown after the first turn · ')}</Text>
           {detalle}
@@ -190,7 +197,7 @@ export const register: Register = (on, options) => {
     const color = colorDe(ultima.porcentaje, umbral)
     const limite = limiteMasAlto(lims)
 
-    return (
+    return conAbajo(
       <Box flexDirection="row" paddingX={1}>
         <Text color={color} bold>
           {icono(ultima.porcentaje)} {tr('Contexto', 'Context')} {ultima.porcentaje}%

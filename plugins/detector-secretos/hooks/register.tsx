@@ -70,7 +70,7 @@ export const register: Register = (on, options) => {
     const r = await next(e)
     L = await idiomaDeSesion($, options.idioma)
     await $.command.register({ name: 'secretos', description: t(T.comando) })
-    await pintarEstado($, aj())
+    $.ui.invalidate('ui.render')
     return r
   })
 
@@ -117,6 +117,35 @@ export const register: Register = (on, options) => {
     const motivo = await decidir($, aj(), revisiones, 'commit')
     return motivo === undefined ? next(e) : { deny: motivo }
   }).catch(($, e, next) => (next.called ? next(e) : { deny: t(T.fallo) }))
+
+  // ---- Franja sobre el prompt: estado en color, encima de lo que pinten los demás ----
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    const abajo = await next(e)
+    if (e.props.hasSurvey) return abajo
+    const { Box, Text } = $.ui.resolve(e)
+    const es = L === 'es'
+    const lista = await read($, detecciones)
+    const bloqueados = lista.filter(d => d.decision === 'bloqueado').length
+    const s = (n: number) => (n === 1 ? '' : 's')
+    const modo = es ? (soloBloquear ? 'bloquear' : 'preguntar') : (soloBloquear ? 'block' : 'ask')
+    return (
+      <Box flexDirection="column">
+        <Box flexDirection="row" paddingX={1}>
+          <Text color="success" bold>🔐 {es ? 'Secretos' : 'Secrets'}: {modo}</Text>
+          {lista.length > 0 && (
+            <Text color={bloqueados > 0 ? 'error' : 'warning'}>
+              {' · '}
+              {es
+                ? `${lista.length} detectado${s(lista.length)}${bloqueados > 0 ? ` (${bloqueados} bloqueado${s(bloqueados)})` : ''}`
+                : `${lista.length} found${bloqueados > 0 ? ` (${bloqueados} blocked)` : ''}`}
+            </Text>
+          )}
+          <Text dimColor> · /secretos</Text>
+        </Box>
+        {abajo}
+      </Box>
+    )
+  })
 
   // ---- Panel /secretos ----
   on('ui.render', { component: 'Pane', requestId: PANEL }, async ($, e) => {
@@ -179,7 +208,7 @@ export const register: Register = (on, options) => {
 
         {lista.length > 0 && (
           <Box marginTop={1}>
-            <Button key="limpiar" label={es ? 'Limpiar historial' : 'Clear history'} hotkey="l" onPress={async () => { await update($, detecciones, () => []); await pintarEstado($, aj()) }} />
+            <Button key="limpiar" label={es ? 'Limpiar historial' : 'Clear history'} hotkey="l" onPress={async () => { await update($, detecciones, () => []); $.ui.invalidate('ui.render') }} />
           </Box>
         )}
       </Box>
@@ -276,28 +305,10 @@ async function anotarDeteccion($: EngineInterface, aj: Ajustes, accion: Deteccio
   try {
     const deteccion: Deteccion = { hora: await $.clock.now(), accion, hallazgos: hallazgos.slice(0, 20), total, decision }
     await update($, detecciones, lista => [...lista, deteccion].slice(-HISTORIA))
-    await pintarEstado($, aj)
+    $.ui.invalidate('ui.render')
   } catch {
     // nada
   }
-}
-
-/** Pinta la línea de estado bajo el prompt. */
-async function pintarEstado($: EngineInterface, aj: Ajustes): Promise<void> {
-  const es = aj.L === 'es'
-  const lista = await read($, detecciones)
-  const partes = [es ? `🔑 Secretos: ${aj.soloBloquear ? 'bloquear' : 'preguntar'}` : `🔑 Secrets: ${aj.soloBloquear ? 'block' : 'ask'}`]
-  if (lista.length > 0) {
-    const bloqueados = lista.filter(d => d.decision === 'bloqueado').length
-    const s = (n: number) => (n === 1 ? '' : 's')
-    partes.push(
-      es
-        ? `${lista.length} detectado${s(lista.length)}${bloqueados > 0 ? ` (${bloqueados} bloqueado${s(bloqueados)})` : ''}`
-        : `${lista.length} found${bloqueados > 0 ? ` (${bloqueados} blocked)` : ''}`,
-    )
-  }
-  partes.push('/secretos')
-  $.ui.status(partes.join(' · '))
 }
 
 async function idiomaDeSesion($: EngineInterface, opcion: unknown): Promise<Idioma> {

@@ -1,6 +1,6 @@
 {
   "name": "contexto-costo",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Barra de contexto bajo cada llamada (principal y subagentes), banda con contexto, costo y límites; /costo abre el detalle. · Context bar under each tool call, a band with context, cost and limits; /costo opens the details.",
   "author": {
     "name": "Victor Tinoco"
