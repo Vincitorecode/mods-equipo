@@ -221,6 +221,27 @@ describe('interfaz', () => {
     await ui.unmount()
   })
 
+  test('/guardia muestra el banner, y lo oculta si el panel es angosto', { options: { idioma: 'es' } }, async $ => {
+    const ui = await $.ui.mount({ plugin: 'guardia-produccion', surface: 'terminal', component: 'Pane', requestId: 'guardia-produccion', props: { bodyColumns: 80 } } as never)
+    expect(await ui.find({ type: 'Text', text: /█▄█ █▄█ █▀█ █▀▄ █▄▀/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /root@guard:~# watch_/ })).toBeDefined()
+    await ui.unmount()
+
+    const angosto = await $.ui.mount({ plugin: 'guardia-produccion', surface: 'terminal', component: 'Pane', requestId: 'guardia-produccion', props: { bodyColumns: 50 } } as never)
+    expect(await angosto.find({ type: 'Text', text: /root@guard/ })).toBeUndefined()
+    expect(await angosto.find({ type: 'Text', text: /Guardia activa/ })).toBeDefined()
+    await angosto.unmount()
+  })
+
+  test('en producción el banner avisa', { options: { idioma: 'es' } }, async ($, on) => {
+    on('command.run', async () => ({}))
+    on('process.run', async () => ({ value: { exitCode: 0, stdout: 'prod-mx\n', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }))
+    await $.command.run({ command: 'guardia', args: '' })
+    const ui = await $.ui.mount({ plugin: 'guardia-produccion', surface: 'terminal', component: 'Pane', requestId: 'guardia-produccion', props: { bodyColumns: 80 } } as never)
+    expect(await ui.find({ type: 'Text', text: /root@guard:~# PROD!_/ })).toBeDefined()
+    await ui.unmount()
+  })
+
   test('en inglés', { options: { idioma: 'en' } }, async $ => {
     const ui = await $.ui.mount({ plugin: 'guardia-produccion', surface: 'terminal', component: 'Pane', requestId: 'guardia-produccion', props: { bodyColumns: 80 } } as never)
     expect(await ui.find({ type: 'Text', text: /Guard active/ })).toBeDefined()

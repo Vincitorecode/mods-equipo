@@ -176,6 +176,25 @@ describe('interfaz', () => {
     }
   })
 
+  test('/secretos muestra el banner: locked sin hallazgos, caught con hallazgos', { options: { idioma: 'es' } }, async ($, on) => {
+    on('clock.now', async () => ({ value: Date.UTC(2026, 9, 7, 15, 30) }))
+    on('tool.call', { tool: 'AskUserQuestion' }, async () => ({ deny: 'cerrado' }))
+    const montar = (bodyColumns: number) => $.ui.mount({ plugin: 'detector-secretos', surface: 'terminal', component: 'Pane', requestId: 'detector-secretos', props: { bodyColumns } } as never)
+    let ui = await montar(80)
+    expect(await ui.find({ type: 'Text', text: /▄█ ██▄ █▄▄ █▀▄ ██▄  █  ▄█/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /\] locked_/ })).toBeDefined()
+    await ui.unmount()
+
+    ui = await montar(50)
+    expect(await ui.find({ type: 'Text', text: /locked_/ })).toBeUndefined()
+    await ui.unmount()
+
+    await $.tool.call({ tool: 'Write', file_path: '/p/config.ts', content: `export const k = "${AWS}"` })
+    ui = await montar(80)
+    expect(await ui.find({ type: 'Text', text: /\] caught_/ })).toBeDefined()
+    await ui.unmount()
+  })
+
   test('en inglés', { options: { idioma: 'en' } }, async $ => {
     const ui = await $.ui.mount({ plugin: 'detector-secretos', surface: 'terminal', component: 'Pane', requestId: 'detector-secretos', props: { bodyColumns: 80 } } as never)
     expect(await ui.find({ type: 'Text', text: /Secret detector active/ })).toBeDefined()
