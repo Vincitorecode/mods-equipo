@@ -2,6 +2,9 @@
 
 ## 2026-10-13
 
+### guardia-produccion 0.4.1 · detector-secretos 0.4.1
+- Emojis nuevos que se ven completos en cualquier terminal: guardia 📡 🧨 🚀 🧯 ⚓ 🔥, secretos 🥷 🚨 🔒.
+
 ### Para todos
 - **Idioma español / inglés** en los tres mods (opción *Idioma*, por defecto `auto`: usa el idioma de Claude Code o el del sistema).
 - **Instalador de un comando** para macOS / Linux (`instalar.sh`) y Windows (`instalar.ps1`): revisa la versión de Claude Code y git, agrega el marketplace e instala o actualiza.
