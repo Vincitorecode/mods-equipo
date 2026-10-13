@@ -113,7 +113,7 @@ Si cancelas, Claude recibe el motivo y la instrucción de no reintentar ni busca
 
 **Interfaz:**
 
-- Línea de estado: `🛡 Guardia activa · k8s: dev-cluster · 2 detenidos (1 cancelado) · /guardia`. Si tu contexto de kubectl es de producción lo marca: `⚠ k8s PROD: prod-mx`.
+- Línea de estado: `💂 Guardia activa · 🚢 k8s: dev-cluster · 2 detenidos (1 cancelado) · /guardia`. Si tu contexto de kubectl es de producción lo marca: `🔥 k8s PROD: prod-mx`.
 - **`/guardia`** abre un panel con el estado, el historial de comandos detenidos en la sesión con lo que decidiste, y la lista de lo que vigila.
 
 **Configuración:**
@@ -145,7 +145,7 @@ Lo que encuentra se muestra **enmascarado** (`AKIA…LQ (20)`), nunca completo.
 
 **Interfaz:**
 
-- Línea de estado: `🔑 Secretos: preguntar · 1 detectado (1 bloqueado) · /secretos`.
+- Línea de estado: `🥷 Secretos: preguntar · 1 detectado (1 bloqueado) · /secretos`.
 - **`/secretos`** abre un panel con el modo, los archivos permitidos, cuántas escrituras y commits revisó, y el historial de lo detectado (enmascarado).
 
 **Configuración:**

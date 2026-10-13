@@ -131,7 +131,7 @@ export const register: Register = (on, options) => {
     return (
       <Box flexDirection="column">
         <Box flexDirection="row" paddingX={1}>
-          <Text color="success" bold>🔐 {es ? 'Secretos' : 'Secrets'}: {modo}</Text>
+          <Text color="success" bold>🥷 {es ? 'Secretos' : 'Secrets'}: {modo}</Text>
           {lista.length > 0 && (
             <Text color={bloqueados > 0 ? 'error' : 'warning'}>
               {' · '}
@@ -163,7 +163,7 @@ export const register: Register = (on, options) => {
     return (
       <Box flexDirection="column">
         <Box borderStyle="round" borderColor={lista.length > 0 ? 'yellow' : 'green'} paddingX={1} flexDirection="column">
-          <Text bold color="green">{es ? '🔑 Detector de secretos activo' : '🔑 Secret detector active'}</Text>
+          <Text bold color="green">{es ? '🥷 Detector de secretos activo' : '🥷 Secret detector active'}</Text>
           <Text>
             <Text dimColor>{es ? 'Modo: ' : 'Mode: '}</Text>
             {soloBloquear ? <Text color="red" bold>{es ? 'bloquear' : 'block'}</Text> : <Text>{es ? 'preguntar' : 'ask'}</Text>}
@@ -270,7 +270,7 @@ async function decidir($: EngineInterface, aj: Ajustes, revisiones: Revision[], 
 
   if (soloBloquear) {
     await anotar('bloqueado')
-    $.ui.toast(es ? `🔑 Detector de secretos bloqueó ${queCosa} (${tiposLocal})` : `🔑 Secret detector blocked ${queCosa} (${tiposLocal})`)
+    $.ui.toast(es ? `🔒 Detector de secretos bloqueó ${queCosa} (${tiposLocal})` : `🔒 Secret detector blocked ${queCosa} (${tiposLocal})`)
     return paraClaude
   }
 
@@ -280,7 +280,7 @@ async function decidir($: EngineInterface, aj: Ajustes, revisiones: Revision[], 
   let respuesta: string
   try {
     respuesta = await $.ui.ask(
-      (es ? `🔑 Posibles secretos ${accion === 'commit' ? 'en el commit' : 'en lo que Claude va a escribir'}:\n` : `🔑 Possible secrets ${accion === 'commit' ? 'in the commit' : 'in what Claude is about to write'}:\n`) +
+      (es ? `🚨 Posibles secretos ${accion === 'commit' ? 'en el commit' : 'en lo que Claude va a escribir'}:\n` : `🚨 Possible secrets ${accion === 'commit' ? 'in the commit' : 'in what Claude is about to write'}:\n`) +
         detalle +
         (resto > 0 ? (es ? `\n  +${resto} más (en /secretos)` : `\n  +${resto} more (in /secretos)`) : ''),
       { header: es ? 'Secretos' : 'Secrets', options: [T.bloquear[L], T.permitir[L]] },
@@ -295,7 +295,7 @@ async function decidir($: EngineInterface, aj: Ajustes, revisiones: Revision[], 
     return undefined
   }
   await anotar('bloqueado')
-  $.ui.toast(es ? `🔑 Detector de secretos bloqueó ${queCosa}. Detalle en /secretos` : `🔑 Secret detector blocked ${queCosa}. Details in /secretos`)
+  $.ui.toast(es ? `🔒 Detector de secretos bloqueó ${queCosa}. Detalle en /secretos` : `🔒 Secret detector blocked ${queCosa}. Details in /secretos`)
   return paraClaude
 }
 
