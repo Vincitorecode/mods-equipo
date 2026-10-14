@@ -107,6 +107,8 @@ Detiene, entre otros:
 - **Señales de producción** en el comando: `--env production`, `--stage prod`, `NODE_ENV=production`… junto a un verbo como deploy, migrate o delete
 - **Archivos:** `rm -r` sobre cualquier cosa que no sea `node_modules`, `dist`, `build`, `.next`, `coverage`, `/tmp/…`, etc.; `find -delete`, `xargs rm -rf`, `Remove-Item -Recurse`
 
+**Scripts de npm y make:** en `npm run deploy`, `yarn release`, `pnpm db:reset`, `bun run x` o `make deploy` lee el script del `package.json` (con su `pre` y `post`) o la receta del `Makefile` (con sus prerrequisitos y variables), y lo revisa como si Claude lo hubiera escrito. El diálogo dice de dónde viene: `npm run deploy → despliegue a producción`. Dentro de esos scripts, `rm -rf lib` y otras carpetas del proyecto cuentan como limpieza; `rm -r` fuera del proyecto (`..`, `~`, rutas absolutas) sí se detiene.
+
 También revisa lo que va dentro de `bash -c "…"`, `eval`, `ssh servidor "…"` y `$(…)`. **No** se detiene por texto: mensajes de commit, `echo "…"`, heredocs que escriben un archivo, `--help` ni `--dry-run`.
 
 Si cancelas, Claude recibe el motivo y la instrucción de no reintentar ni buscar otra vía, sino preguntarte.
@@ -233,7 +235,7 @@ Three Claude Code mods that make it safer and more transparent. Install only the
 
 | Mod | What it does |
 | --- | --- |
-| **guardia-produccion** | Stops risky commands (deploys, migrations, deletes, force push, kubectl on prod, push to protected branches…) and asks before running them, even in auto-accept mode. `/guardia` shows what it watches and what it stopped. |
+| **guardia-produccion** | Stops risky commands (deploys, migrations, deletes, force push, kubectl on prod, push to protected branches…) and asks before running them, even in auto-accept mode. It also reads what `npm run x` / `yarn x` / `make x` actually run (package.json scripts, Makefile recipes). `/guardia` shows what it watches and what it stopped. |
 | **detector-secretos** | Stops Claude before it writes or commits API keys, tokens, private keys or passwords (quoted or in `.env`/YAML), masked in the dialog. `/secretos` shows the history. Add `secretos:permitir` or `gitleaks:allow` to a line to allow it. |
 | **contexto-costo** | Context bar under every tool call (main agent and subagents), a band above the prompt with context, cost and usage limits, and `/costo` with per-turn details. |
 

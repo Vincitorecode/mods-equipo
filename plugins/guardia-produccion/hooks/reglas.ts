@@ -79,6 +79,11 @@ export type Config = {
   ignoradas: ReadonlySet<Categoria>
   /** La rama actual, cuando el comando hace push sin decir a cuál (la averigua el hook). */
   ramaActual?: string
+  /**
+   * El comando es un script del package.json o una receta del Makefile: lo escribió
+   * alguien del equipo, así que `rm -r` de una carpeta del proyecto (`rm -rf lib`) es limpieza.
+   */
+  enScript?: boolean
 }
 
 type Regla = { categoria: Categoria; motivo: Texto; patron: RegExp }
@@ -358,7 +363,7 @@ function base(p: string | undefined): string {
 // ---- Reglas que miran palabra por palabra ----
 
 /** ¿Es un rm recursivo sobre algo que no es una carpeta desechable? */
-function rmPeligroso(toks: string[]): boolean {
+function rmPeligroso(toks: string[], enScript = false): boolean {
   let i = 0
   let porXargs = false
   if (base(toks[0]) === 'xargs') {
@@ -374,7 +379,13 @@ function rmPeligroso(toks: string[]): boolean {
   const objetivos = args.filter(p => !p.startsWith('-'))
   // Con xargs los objetivos llegan por la tubería: no se sabe qué borra.
   if (objetivos.length === 0) return porXargs
-  return objetivos.some(o => !rutaDesechable(o))
+  return objetivos.some(o => !rutaDesechable(o) && !(enScript && rutaDelProyecto(o)))
+}
+
+/** Una carpeta dentro del proyecto, dicha con nombre: `lib`, `./out/cache`; no `.`, `..`, `~`, `/`, `*` ni `$VAR`. */
+function rutaDelProyecto(ruta: string): boolean {
+  const r = ruta.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '')
+  return r !== '' && r !== '.' && !/^([/~]|[A-Za-z]:)/.test(r) && !/[*?$`]/.test(r) && !r.split('/').includes('..')
 }
 
 function rutaDesechable(ruta: string): boolean {
@@ -459,7 +470,7 @@ export function clasificar(comando: string, config: Config = configPorDefecto(),
     const visible = enmascarar(limpio)
     visibles.push(visible)
 
-    if (rmPeligroso(toks)) agregar({ categoria: 'archivos', motivo: { es: 'rm -r borra carpetas de forma permanente', en: 'rm -r permanently deletes folders' } })
+    if (rmPeligroso(toks, config.enScript)) agregar({ categoria: 'archivos', motivo: { es: 'rm -r borra carpetas de forma permanente', en: 'rm -r permanently deletes folders' } })
 
     // Kubernetes y Helm: siempre peligrosos, en cualquier contexto
     const kube = subcomandoKube(toks)
@@ -533,6 +544,233 @@ export function kubeMuta(comando: string): boolean {
 export function contextoExplicito(comando: string): string | undefined {
   const m = comando.match(/--(kube-)?context[= ](?:"([^"]+)"|'([^']+)'|(\S+))/)
   return m === null ? undefined : (m[2] ?? m[3] ?? m[4])
+}
+
+// ---- Scripts de npm / yarn / pnpm / bun y targets de make ----
+//
+// `npm run deploy` o `make release` no dicen nada por sí solos: lo riesgoso está en
+// el package.json o en el Makefile. Se lee el script o la receta y se revisa como si
+// Claude lo hubiera escrito en la shell.
+
+/** Un script o target que el comando va a ejecutar, ya leído. */
+export type Script = {
+  /** Cómo se invocó, para el motivo: `npm run deploy`, `make release`. */
+  etiqueta: string
+  /** Lo que ejecuta, como texto de shell. */
+  cuerpo: string
+}
+
+/** Lee un archivo; undefined si no existe o no se pudo leer. */
+export type Lector = (ruta: string) => Promise<string | undefined>
+
+type Invocacion =
+  | { tipo: 'npm'; etiqueta: string; script: string; dir?: string }
+  | { tipo: 'make'; etiqueta: string; objetivos: string[]; dir?: string; archivo?: string }
+
+/** Subcomandos propios de cada gestor: con ellos no corre un script del package.json. */
+const PROPIOS: Record<'yarn' | 'pnpm' | 'bun', ReadonlySet<string>> = {
+  yarn: new Set(['add', 'install', 'remove', 'upgrade', 'upgrade-interactive', 'up', 'init', 'info', 'why', 'workspace', 'workspaces', 'dlx', 'exec', 'config', 'cache', 'global', 'link', 'unlink', 'create', 'set', 'plugin', 'version', 'pack', 'publish', 'npm', 'bin', 'outdated', 'audit', 'list', 'licenses', 'import', 'policies', 'owner', 'tag', 'team', 'autoclean', 'check', 'help', 'node', 'dedupe', 'explain', 'constraints', 'patch', 'patch-commit', 'rebuild', 'search', 'stage', 'unplug', 'login', 'logout', 'generate-lock-entry']),
+  pnpm: new Set(['add', 'install', 'i', 'update', 'up', 'upgrade', 'remove', 'rm', 'uninstall', 'un', 'link', 'ln', 'unlink', 'import', 'rebuild', 'rb', 'prune', 'fetch', 'patch', 'patch-commit', 'audit', 'list', 'ls', 'outdated', 'why', 'licenses', 'exec', 'dlx', 'create', 'env', 'setup', 'store', 'root', 'bin', 'config', 'c', 'init', 'publish', 'pack', 'deploy', 'server', 'recursive', 'help', 'dedupe', 'approve-builds', 'cat-file', 'self-update']),
+  bun: new Set(['install', 'i', 'add', 'a', 'remove', 'rm', 'update', 'outdated', 'link', 'unlink', 'pm', 'x', 'create', 'init', 'upgrade', 'build', 'test', 'publish', 'patch', 'patch-commit', 'repl', 'exec', 'audit', 'info', 'why']),
+}
+
+/** Scripts que npm corre sin `run`. */
+const NPM_SIN_RUN: Record<string, string> = { start: 'start', test: 'test', t: 'test', tst: 'test', stop: 'stop', restart: 'restart' }
+
+/** Lo que puede ir antes del programa sin cambiar qué se ejecuta. */
+const PREFIJO_INVOCACION = /^(sudo|doas|command|builtin|exec|env|nohup|time|nice)$/
+
+/** ¿La parte del comando corre un script de npm / yarn / pnpm / bun o un target de make? */
+function leerInvocacion(toks: string[]): Invocacion | undefined {
+  let i = 0
+  while (
+    i < toks.length &&
+    (/^[A-Za-z_][A-Za-z0-9_]*=/.test(toks[i]!) || PREFIJO_INVOCACION.test(base(toks[i])) || (i > 0 && toks[i]!.startsWith('-') && PREFIJO_INVOCACION.test(base(toks[i - 1]))))
+  )
+    i++
+  const prog = base(toks[i])
+  const args = toks.slice(i + 1)
+  if (prog === 'make' || prog === 'gmake') return leerMake(args)
+  if (prog === 'npm' || prog === 'yarn' || prog === 'pnpm' || prog === 'bun') return leerGestor(prog, args)
+  return undefined
+}
+
+function leerGestor(prog: 'npm' | 'yarn' | 'pnpm' | 'bun', args: string[]): Invocacion | undefined {
+  let dir: string | undefined
+  const pos: string[] = []
+  for (let j = 0; j < args.length; j++) {
+    const a = args[j]!
+    if (a === '--') break // lo que sigue son argumentos para el script
+    const m = a.match(/^(--prefix|--cwd|--dir|-C)(?:=(.*))?$/)
+    if (m) {
+      dir = m[2] ?? args[++j]
+      continue
+    }
+    if (/^(-w|--workspace|--filter|-F)$/.test(a)) j++
+    else if (!a.startsWith('-')) pos.push(a)
+  }
+  const [sub, nombre] = pos
+  if (sub === undefined) return undefined
+  let script: string | undefined
+  if (/^(run|run-script|rum|urn)$/.test(sub)) script = nombre
+  else if (prog === 'npm') script = NPM_SIN_RUN[sub]
+  else if (!PROPIOS[prog].has(sub)) script = sub // yarn deploy, pnpm deploy:prod, bun release
+  if (script === undefined) return undefined
+  return { tipo: 'npm', etiqueta: sub === script ? `${prog} ${script}` : `${prog} ${sub} ${script}`, script, dir }
+}
+
+function leerMake(args: string[]): Invocacion | undefined {
+  let dir: string | undefined
+  let archivo: string | undefined
+  const objetivos: string[] = []
+  for (let j = 0; j < args.length; j++) {
+    const a = args[j]!
+    let m: RegExpMatchArray | null
+    if (a === '-C' || a === '--directory') dir = args[++j]
+    else if ((m = a.match(/^(?:-C|--directory=)(.+)$/))) dir = m[1]
+    else if (a === '-f' || a === '--file' || a === '--makefile') archivo = args[++j]
+    else if ((m = a.match(/^(?:-f|--file=|--makefile=)(.+)$/))) archivo = m[1]
+    // Simulacros: make solo imprime o pregunta, no ejecuta.
+    else if (/^(--dry-run|--just-print|--recon|--question|--print-data-base)$/.test(a) || /^-[a-zA-Z]*[nqp][a-zA-Z]*$/.test(a)) return undefined
+    else if (/^(-[IoW]|--include-dir|--old-file|--what-if|--new-file|--assume-old|--assume-new)$/.test(a)) j++
+    else if ((a === '-j' || a === '-l') && /^\d+$/.test(args[j + 1] ?? '')) j++
+    else if (!a.startsWith('-') && !a.includes('=')) objetivos.push(a)
+  }
+  return { tipo: 'make', etiqueta: ['make', ...objetivos].join(' '), objetivos, dir, archivo }
+}
+
+/** El script `nombre` del package.json con su pre y su post; undefined si no existe. */
+export function scriptNpm(packageJson: string, nombre: string): string | undefined {
+  let scripts: unknown
+  try {
+    scripts = (JSON.parse(packageJson) as { scripts?: unknown })?.scripts
+  } catch {
+    return undefined
+  }
+  if (typeof scripts !== 'object' || scripts === null) return undefined
+  const s = scripts as Record<string, unknown>
+  if (typeof s[nombre] !== 'string') return undefined
+  return [`pre${nombre}`, nombre, `post${nombre}`].map(n => s[n]).filter((c): c is string => typeof c === 'string').join('\n')
+}
+
+/**
+ * Las recetas de unos targets de make y de sus prerrequisitos, una línea por
+ * comando, con las variables del Makefile sustituidas. Sin targets, las del primero.
+ */
+export function recetasMake(makefile: string, objetivos: string[]): string {
+  const lineas = makefile.replace(/\r\n/g, '\n').replace(/\\\n/g, ' ').split('\n')
+  const vars = new Map<string, string>([['MAKE', 'make']])
+  const reglas = new Map<string, { prereqs: string[]; receta: string[] }>()
+  const regla = (t: string) => reglas.get(t) ?? reglas.set(t, { prereqs: [], receta: [] }).get(t)!
+  const sinPrefijo = (cmd: string) => cmd.trim().replace(/^[@+-]+\s*/, '')
+  let primero: string | undefined
+  let actuales: string[] = []
+  let enDefine = false
+
+  for (const linea of lineas) {
+    if (enDefine) {
+      if (/^\s*endef\b/.test(linea)) enDefine = false
+      continue
+    }
+    if (linea.startsWith('\t')) {
+      const cmd = sinPrefijo(linea.slice(1))
+      if (cmd !== '' && !cmd.startsWith('#')) for (const t of actuales) regla(t).receta.push(cmd)
+      continue
+    }
+    const texto = linea.replace(/(^|[^\\])#.*$/, '$1')
+    if (texto.trim() === '') continue // una línea en blanco no termina la receta
+    actuales = []
+    if (/^\s*define\b/.test(texto)) {
+      enDefine = true
+      continue
+    }
+    const v = texto.match(/^\s*(?:export\s+|override\s+)?([A-Za-z_][\w.-]*)\s*(\+=|\?=|!=|:{0,3}=)\s*(.*)$/)
+    if (v) {
+      const [, nombre, op, valor] = v as unknown as [string, string, string, string]
+      if (op === '+=') vars.set(nombre, `${vars.get(nombre) ?? ''} ${valor.trim()}`.trim())
+      else if (op === '?=') {
+        if (!vars.has(nombre)) vars.set(nombre, valor.trim())
+      } else if (op !== '!=') vars.set(nombre, valor.trim())
+      continue
+    }
+    const r = texto.match(/^([^:=\s][^:=]*?)\s*::?(?!=)(.*)$/)
+    if (!r) continue
+    const [der, ...enLinea] = r[2]!.split(';')
+    const targets = r[1]!.trim().split(/\s+/)
+    const prereqs = der!.replace('|', ' ').split(/\s+/).filter(p => p !== '' && !p.includes('='))
+    for (const t of targets) {
+      regla(t).prereqs.push(...prereqs)
+      const cmd = sinPrefijo(enLinea.join(';'))
+      if (cmd !== '') regla(t).receta.push(cmd)
+      if (primero === undefined && !t.startsWith('.') && !t.includes('%')) primero = t
+    }
+    actuales = targets
+  }
+
+  const salida: string[] = []
+  const vistos = new Set<string>()
+  const visitar = (t: string) => {
+    const r = reglas.get(t)
+    if (vistos.has(t) || r === undefined) return
+    vistos.add(t)
+    r.prereqs.forEach(visitar)
+    salida.push(...r.receta)
+  }
+  ;(objetivos.length > 0 ? objetivos : primero !== undefined ? [primero] : []).forEach(visitar)
+
+  // $(VAR) y ${VAR} del Makefile; $$ es un $ para la shell.
+  let s = salida.join('\n')
+  for (let k = 0; k < 3; k++) s = s.replace(/\$\$|\$[({]([A-Za-z_][\w.-]*)[)}]/g, (m, n?: string) => (n === undefined ? m : vars.get(n) ?? m))
+  return s.replace(/\$\$/g, '$')
+}
+
+/**
+ * Los scripts de npm / yarn / pnpm / bun y los targets de make que corre el
+ * comando, leídos de su package.json o Makefile (y los que esos a su vez llaman).
+ */
+export async function expandirScripts(comando: string, carpeta: string, leer: Lector, permitidos: RegExp[] = [], profundidad = 0): Promise<Script[]> {
+  if (profundidad >= 3) return []
+  const salida: Script[] = []
+  let dir = carpeta
+  for (const crudo of segmentos(separarHeredocs(comando).sin)) {
+    const toks = palabras(crudo.replace(/^[({!\s]+/, '').replace(/[)\s]+$/, ''))
+    if (base(toks[0]) === 'cd') {
+      if (toks[1] !== undefined) dir = unir(dir, toks[1])
+      continue
+    }
+    if (permitidos.some(p => p.test(crudo)) || toks.some(t => SOLO_AYUDA.test(t))) continue
+    const inv = leerInvocacion(toks)
+    if (inv === undefined) continue
+    const donde = inv.dir === undefined ? dir : unir(dir, inv.dir)
+    let cuerpo: string | undefined
+    if (inv.tipo === 'npm') {
+      const pkg = await leer(`${donde}/package.json`)
+      cuerpo = pkg === undefined ? undefined : scriptNpm(pkg, inv.script)
+    } else {
+      const makefile = await leerMakefile(leer, donde, inv.archivo)
+      cuerpo = makefile === undefined ? undefined : recetasMake(makefile, inv.objetivos)
+    }
+    if (cuerpo === undefined || cuerpo.trim() === '') continue
+    salida.push({ etiqueta: inv.etiqueta, cuerpo })
+    for (const dentro of await expandirScripts(cuerpo, donde, leer, permitidos, profundidad + 1)) {
+      salida.push({ etiqueta: `${inv.etiqueta} → ${dentro.etiqueta}`, cuerpo: dentro.cuerpo })
+    }
+  }
+  return salida
+}
+
+async function leerMakefile(leer: Lector, dir: string, archivo?: string): Promise<string | undefined> {
+  if (archivo !== undefined) return leer(unir(dir, archivo))
+  for (const nombre of ['GNUmakefile', 'makefile', 'Makefile']) {
+    const texto = await leer(`${dir}/${nombre}`)
+    if (texto !== undefined) return texto
+  }
+  return undefined
+}
+
+function unir(dir: string, ruta: string): string {
+  if (ruta === '.' || ruta === './') return dir
+  return /^([/~]|[A-Za-z]:[\\/])/.test(ruta) ? ruta : `${dir.replace(/[\\/]+$/, '')}/${ruta}`
 }
 
 /** La carpeta donde corre el comando: la de la sesión, movida por `cd x &&` o `git -C x`. */

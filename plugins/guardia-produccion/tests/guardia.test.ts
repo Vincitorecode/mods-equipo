@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { elegirIdioma } from '../hooks/idioma'
-import { clasificar, compilarCategorias, configPorDefecto, kubeMuta, pushUsaRamaActual } from '../hooks/reglas'
+import { clasificar, compilarCategorias, configPorDefecto, expandirScripts, kubeMuta, pushUsaRamaActual, recetasMake, scriptNpm } from '../hooks/reglas'
 
 const config = configPorDefecto()
 const riesgoso = (c: string) => clasificar(c, config).length > 0
@@ -154,6 +154,124 @@ describe('reglas', () => {
   })
 })
 
+describe('scripts de npm y targets de make', () => {
+  const PKG = JSON.stringify({
+    scripts: {
+      dev: 'next dev',
+      build: 'next build',
+      test: 'jest',
+      predeploy: 'npm run build',
+      deploy: 'firebase deploy --only hosting',
+      'deploy:prod': 'vercel --prod',
+      'db:reset': 'prisma migrate reset --force',
+      limpiar: 'rm -rf dist .next',
+      'build:fn': 'rm -rf lib && tsc',
+      borrarTodo: 'rm -rf ../otro-repo',
+      borrarCasa: 'rm -rf ~/proyectos',
+      todo: 'npm run db:reset && npm test',
+    },
+  })
+  const MAKEFILE = [
+    'KUBECTL ?= kubectl',
+    'ENTORNO := production',
+    '',
+    '.PHONY: build deploy release',
+    'build:',
+    '\tgo build ./...',
+    '',
+    'test: build',
+    '\t@go test ./...',
+    '',
+    'deploy: build',
+    '\t$(KUBECTL) delete pod -l app=api',
+    '',
+    'release: test publicar',
+    'publicar:',
+    '\t-git push --force origin main',
+    '',
+    'migrar:',
+    '\tDEPLOY_ENV=$(ENTORNO) ./migrate.sh deploy',
+    '\techo $$HOME',
+  ].join('\n')
+  const archivos: Record<string, string> = {
+    '/p/package.json': PKG,
+    '/p/Makefile': MAKEFILE,
+    '/p/web/package.json': JSON.stringify({ scripts: { deploy: 'netlify deploy --prod' } }),
+  }
+  const leer = async (ruta: string) => archivos[ruta]
+  const riesgos = async (c: string) => {
+    const scripts = await expandirScripts(c, '/p', leer)
+    return [...clasificar(c, config), ...scripts.flatMap(s => clasificar(s.cuerpo, { ...config, enScript: true }))]
+  }
+
+  test('lee el script con su pre y su post', async () => {
+    expect(scriptNpm(PKG, 'deploy')).toBe('npm run build\nfirebase deploy --only hosting')
+    expect(scriptNpm(PKG, 'no-existe')).toBeUndefined()
+    expect(scriptNpm('{ roto', 'deploy')).toBeUndefined()
+  })
+
+  test('lee la receta de make con sus prerrequisitos y variables', async () => {
+    expect(recetasMake(MAKEFILE, ['deploy'])).toBe('go build ./...\nkubectl delete pod -l app=api')
+    expect(recetasMake(MAKEFILE, ['release'])).toBe('go build ./...\ngo test ./...\ngit push --force origin main')
+    expect(recetasMake(MAKEFILE, [])).toBe('go build ./...') // sin target: el primero
+    expect(recetasMake(MAKEFILE, ['migrar'])).toBe('DEPLOY_ENV=production ./migrate.sh deploy\necho $HOME')
+  })
+
+  test('detiene lo riesgoso que va dentro del script', async () => {
+    for (const c of [
+      'npm run deploy',
+      'npm run deploy:prod',
+      'yarn deploy:prod',
+      'pnpm run db:reset',
+      'bun run deploy:prod',
+      'npm run todo', // script que llama a otro script
+      'npm run borrarTodo', // rm fuera del proyecto
+      'npm run borrarCasa',
+      'npm run deploy --prefix web',
+      'cd web && npm run deploy',
+      'make deploy',
+      'make release',
+      'make -C . migrar',
+      'make -f Makefile publicar',
+    ]) {
+      expect([c, (await riesgos(c)).length > 0]).toEqual([c, true])
+    }
+  })
+
+  test('deja pasar scripts normales, simulacros y lo que no puede leer', async () => {
+    for (const c of [
+      'npm run dev',
+      'npm run build',
+      'npm test',
+      'npm run limpiar',
+      'npm run build:fn', // rm -rf de una carpeta del proyecto: limpieza
+      'pnpm install',
+      'yarn add lodash',
+      'npm run no-existe',
+      'make',
+      'make test',
+      'make -n deploy',
+      'make deploy --dry-run',
+      'npm run deploy -- --help',
+      'cd otro && npm run deploy', // no hay package.json ahí
+      'echo "npm run deploy"',
+    ]) {
+      expect([c, (await riesgos(c)).length > 0]).toEqual([c, false])
+    }
+  })
+
+  test('rm -rf lib escrito por Claude sigue preguntando; en un script es limpieza', async () => {
+    expect(clasificar('rm -rf lib', config).length).toBe(1)
+    expect(clasificar('rm -rf lib', { ...config, enScript: true }).length).toBe(0)
+    expect(clasificar('rm -rf .', { ...config, enScript: true }).length).toBe(1)
+    expect(clasificar('rm -rf $DIR', { ...config, enScript: true }).length).toBe(1)
+  })
+
+  test('respeta los comandos permitidos', async () => {
+    expect(await expandirScripts('npm run deploy', '/p', leer, [/npm run deploy$/])).toEqual([])
+  })
+})
+
 const bash = { result: { stdout: '', stderr: '', interrupted: false, isImage: false } }
 
 describe('en Claude Code', () => {
@@ -184,6 +302,24 @@ describe('en Claude Code', () => {
     })
     await $.tool.call({ tool: 'Bash', command: 'terraform apply' })
     expect(corrio).toBe(true)
+  })
+
+  test('npm run deploy se detiene si el script despliega', async ($, on) => {
+    let corrio = false
+    let pregunta = ''
+    on('session.cwd', async () => ({ value: '/p' }))
+    on('fs.read', async ($, e) => (e.path === '/p/package.json' ? { value: JSON.stringify({ scripts: { deploy: 'vercel --prod' } }) } : { error: 'ENOENT' }))
+    on('tool.call', { tool: 'AskUserQuestion' }, async ($, e) => {
+      pregunta = JSON.stringify(e)
+      return { deny: 'cerrado' }
+    })
+    on('tool.call', { tool: 'Bash' }, async () => {
+      corrio = true
+      return bash
+    })
+    await $.tool.call({ tool: 'Bash', command: 'npm run deploy' })
+    expect(corrio).toBe(false)
+    expect(pregunta).toContain('npm run deploy →')
   })
 
   test('git push en main se detiene', async ($, on) => {

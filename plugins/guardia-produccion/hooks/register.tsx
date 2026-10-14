@@ -29,11 +29,12 @@ import {
   compilarLista,
   compilarRamas,
   contextoExplicito,
+  expandirScripts,
   kubeMuta,
   pushUsaRamaActual,
   usaKube,
 } from './reglas'
-import type { Config, Riesgo, Texto } from './reglas'
+import type { Config, Riesgo, Script, Texto } from './reglas'
 
 const PANEL = 'guardia-produccion'
 const HISTORIA = 50
@@ -257,20 +258,33 @@ async function revisar($: EngineInterface, comando: string, aj: Ajustes): Promis
   const { config, L } = aj
   const t = (x: Texto) => x[L]
   let cfg = config
+  // `npm run x` / `make x`: lo que de verdad corre está en el package.json o el Makefile.
+  // Si no se pueden leer, se revisa solo el comando, como antes.
+  const scripts: Script[] = /\b(npm|yarn|pnpm|bun|g?make)\b/.test(comando)
+    ? await (async () => expandirScripts(comando, await $.session.cwd(), leerArchivo($), config.permitidos))().catch(() => [])
+    : []
+  const textos = [comando, ...scripts.map(s => s.cuerpo)]
   // `git push` sin rama: averiguar a cuál va.
-  if (pushUsaRamaActual(comando)) {
+  if (textos.some(pushUsaRamaActual)) {
     const rama = await ramaActual($, comando)
     if (rama !== undefined) cfg = { ...config, ramaActual: rama }
   }
   const riesgos: Riesgo[] = clasificar(comando, cfg)
+  for (const s of scripts) {
+    for (const r of clasificar(s.cuerpo, { ...cfg, enScript: true })) {
+      const motivo = { es: `${s.etiqueta} → ${r.motivo.es}`, en: `${s.etiqueta} → ${r.motivo.en}` }
+      if (!riesgos.some(x => x.motivo.es === motivo.es)) riesgos.push({ categoria: r.categoria, motivo })
+    }
+  }
 
-  // Kubernetes / Helm: averiguar a qué clúster apunta el comando.
+  // Kubernetes / Helm: averiguar a qué clúster apunta el comando (o sus scripts).
+  const todo = textos.join('\n')
   let contexto: string | undefined
-  if (usaKube(comando) && !config.ignoradas.has('kubernetes')) {
+  if (usaKube(todo) && !config.ignoradas.has('kubernetes')) {
     const actual = await contextoKubeActual($)
     if (actual !== undefined) await update($, kube, () => actual)
-    contexto = contextoExplicito(comando) ?? actual
-    if (contexto !== undefined && config.prod.test(contexto) && kubeMuta(comando)) {
+    contexto = contextoExplicito(todo) ?? actual
+    if (contexto !== undefined && config.prod.test(contexto) && kubeMuta(todo)) {
       riesgos.push({ categoria: 'kubernetes', motivo: { es: `cambia el clúster de PRODUCCIÓN "${contexto}"`, en: `changes the PRODUCTION cluster "${contexto}"` } })
     }
   }
@@ -355,6 +369,14 @@ async function contextoKubeActual($: EngineInterface): Promise<string | undefine
   } catch {
     return undefined
   }
+}
+
+/** Lee un archivo del proyecto (package.json, Makefile); undefined si no está. */
+function leerArchivo($: EngineInterface): (ruta: string) => Promise<string | undefined> {
+  return ruta => $.fs.read(ruta).then(
+    t => (typeof t === 'string' ? t : undefined),
+    () => undefined,
+  )
 }
 
 /** La rama de git donde corre el comando, o undefined si no es un repo o falla. */

@@ -1,5 +1,12 @@
 # Cambios · Changelog
 
+## 2026-10-14
+
+### guardia-produccion 0.5.0
+- **Revisa lo que corren los scripts de npm y make.** `npm run deploy`, `yarn deploy:prod`, `pnpm db:reset`, `bun run x` y `make release` ya no pasan sin revisar: lee el script del `package.json` (con `pre` y `post`) o la receta del `Makefile` (con prerrequisitos y variables como `$(KUBECTL)`), sigue los scripts que llaman a otros, y respeta `--prefix`, `--cwd`, `-C`, `-f` y `cd carpeta &&`. El motivo dice de dónde viene: `npm run deploy → despliegue a producción`.
+- Dentro de esos scripts, `rm -rf` de una carpeta del proyecto (`rm -rf lib && tsc`) cuenta como limpieza; fuera del proyecto se sigue deteniendo.
+- `make -n`, `--dry-run` y `--help` no se revisan. Si el `package.json` o el `Makefile` no se pueden leer, se revisa solo el comando, como antes.
+
 ## 2026-10-13
 
 ### guardia-produccion 0.4.2 · detector-secretos 0.4.2
