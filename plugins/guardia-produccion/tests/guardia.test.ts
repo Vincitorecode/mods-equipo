@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { elegirIdioma } from '../hooks/idioma'
-import { clasificar, compilarCategorias, configPorDefecto, expandirScripts, kubeMuta, pushUsaRamaActual, recetasMake, scriptNpm } from '../hooks/reglas'
+import { clasificar, clavesDePermiso, compilarCategorias, configPorDefecto, expandirScripts, kubeMuta, pushUsaRamaActual, recetasMake, scriptNpm } from '../hooks/reglas'
 
 const config = configPorDefecto()
 const riesgoso = (c: string) => clasificar(c, config).length > 0
@@ -272,6 +272,26 @@ describe('scripts de npm y targets de make', () => {
   })
 })
 
+describe('permitir en esta sesión', () => {
+  const claves = (c: string, rama?: string) => clavesDePermiso(c, clasificar(c, { ...config, ramaActual: rama }))
+
+  test('el push a una rama protegida se permite por rama', async () => {
+    expect(claves('git push', 'main')).toEqual(['push a main'])
+    expect(claves('git push origin main')).toEqual(['push a main'])
+    expect(claves('git  push   -u origin main')).toEqual(['push a main'])
+    expect(claves('git push origin master')).toEqual(['push a master'])
+    // force push no queda cubierto por el permiso de push a main
+    expect(claves('git push --force origin main')).toContain('$ git push --force origin main')
+  })
+
+  test('lo demás, solo el comando exacto', async () => {
+    expect(claves('terraform apply')).toEqual(['$ terraform apply'])
+    expect(claves('terraform  apply ')).toEqual(['$ terraform apply'])
+    expect(claves('terraform destroy')).toEqual(['$ terraform destroy'])
+    expect(claves('rm -rf src')).not.toEqual(claves('rm -rf docs'))
+  })
+})
+
 const bash = { result: { stdout: '', stderr: '', interrupted: false, isImage: false } }
 
 describe('en Claude Code', () => {
@@ -302,6 +322,38 @@ describe('en Claude Code', () => {
     })
     await $.tool.call({ tool: 'Bash', command: 'terraform apply' })
     expect(corrio).toBe(true)
+  })
+
+  test('"Permitir en esta sesión" no vuelve a preguntar por ese mismo comando', { options: { idioma: 'es' } }, async ($, on) => {
+    let preguntas = 0
+    let corridas = 0
+    on('tool.call', { tool: 'AskUserQuestion' }, async ($, e) => {
+      preguntas++
+      const q = e.questions[0]!
+      expect(q.options.map(o => o.label)).toContain('Permitir en esta sesión')
+      return { result: { questions: e.questions, answers: { [q.question]: 'Permitir en esta sesión' } } }
+    })
+    on('tool.call', { tool: 'Bash' }, async () => {
+      corridas++
+      return bash
+    })
+    await $.tool.call({ tool: 'Bash', command: 'terraform apply' })
+    await $.tool.call({ tool: 'Bash', command: 'terraform apply' })
+    expect([preguntas, corridas]).toEqual([1, 2])
+    // Otro comando de la misma categoría sí pregunta.
+    await $.tool.call({ tool: 'Bash', command: 'terraform destroy' })
+    expect(preguntas).toBe(2)
+  })
+
+  test('sin la opción, pregunta siempre', { options: { idioma: 'es', permitirEnSesion: false } }, async ($, on) => {
+    let opciones: string[] = []
+    on('tool.call', { tool: 'AskUserQuestion' }, async ($, e) => {
+      opciones = e.questions[0]!.options.map(o => o.label)
+      return { deny: 'cerrado' }
+    })
+    on('tool.call', { tool: 'Bash' }, async () => bash)
+    await $.tool.call({ tool: 'Bash', command: 'terraform apply' })
+    expect(opciones).toEqual(['Cancelar', 'Ejecutar de todas formas'])
   })
 
   test('npm run deploy se detiene si el script despliega', async ($, on) => {
@@ -347,6 +399,32 @@ describe('interfaz', () => {
       expect(await ui.find({ type: 'Text', text: /Guardia activa/ })).toBeDefined()
       expect(await ui.find({ type: 'Text', text: /sin respuesta/ })).toBeDefined()
       expect(await ui.find({ type: 'Text', text: /terraform apply -auto-approve/ })).toBeDefined()
+      await ui.unmount()
+    }
+  })
+
+  test('/guardia muestra lo permitido en la sesión y lo puede quitar', { options: { idioma: 'es' } }, async ($, on) => {
+    on('clock.now', async () => ({ value: Date.UTC(2026, 9, 7, 15, 30) }))
+    on('tool.call', { tool: 'AskUserQuestion' }, async ($, e) => ({ result: { questions: e.questions, answers: { [e.questions[0]!.question]: 'Permitir en esta sesión' } } }))
+    on('tool.call', { tool: 'Bash' }, async () => bash)
+    on('ui.render', { component: 'AbovePrompt' }, async ($, e) => $.ui.resolve(e).Box({}))
+    await $.tool.call({ tool: 'Bash', command: 'terraform apply' })
+    await $.tool.call({ tool: 'Bash', command: 'terraform apply' })
+
+    const banda = await $.ui.mount({ plugin: 'guardia-produccion', surface: 'terminal', component: 'AbovePrompt', props: { bodyColumns: 120 } as never })
+    expect(await banda.find({ type: 'Text', text: /1 permitido en sesión/ })).toBeDefined()
+    expect(await banda.find({ type: 'Text', text: /1 detenido\b/ })).toBeDefined() // el segundo no se detuvo
+    await banda.unmount()
+
+    for (const surface of ['terminal', 'desktop'] as const) {
+      const ui = await $.ui.mount({ plugin: 'guardia-produccion', surface, component: 'Pane', requestId: 'guardia-produccion', props: { bodyColumns: 80 } } as never)
+      expect(await ui.find({ type: 'Text', text: /Permitido en esta sesión/ })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: /\$ terraform apply/ })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: /permitido en sesión/ })).toBeDefined() // en el historial
+      if (surface === 'desktop') {
+        await ui.press({ key: 'quitar' })
+        expect(await ui.find({ type: 'Text', text: /Permitido en esta sesión/ })).toBeUndefined()
+      }
       await ui.unmount()
     }
   })

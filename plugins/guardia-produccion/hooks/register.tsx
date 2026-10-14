@@ -16,7 +16,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Evento } from '../types'
+import type { Evento, Permiso } from '../types'
 import { elegirIdioma, locale } from './idioma'
 import type { Idioma } from './idioma'
 import {
@@ -24,6 +24,7 @@ import {
   PATRON_PROD_DEFECTO,
   carpetaDelComando,
   clasificar,
+  clavesDePermiso,
   compilar,
   compilarCategorias,
   compilarLista,
@@ -48,10 +49,12 @@ const BANNER = ['█▀▀ █ █ ▄▀█ █▀█ █▀▄', '█▄█ �
 
 const eventos = atom({ plugin: 'guardia-produccion', key: 'eventos' } as const, [] as Evento[])
 const kube = atom({ plugin: 'guardia-produccion', key: 'kube' } as const, null as string | null)
+const permisos = atom({ plugin: 'guardia-produccion', key: 'permisos' } as const, [] as Permiso[])
 
 const T = {
   ejecutar: { es: 'Ejecutar de todas formas', en: 'Run anyway' },
   cancelar: { es: 'Cancelar', en: 'Cancel' },
+  permitirSesion: { es: 'Permitir en esta sesión', en: 'Allow for this session' },
   comando: { es: 'Qué vigila la guardia de producción y lo que detuvo en esta sesión', en: 'What the production guard watches and what it stopped this session' },
   titulo: { es: 'Guardia de producción', en: 'Production guard' },
   abierto: { es: 'Panel de la guardia de producción abierto.', en: 'Production guard panel opened.' },
@@ -91,6 +94,7 @@ export const register: Register = (on, options) => {
     ignoradas: compilarCategorias(String(options.categoriasIgnoradas ?? '')),
   }
   const permitirSinRespuesta = options.sinRespuesta === 'permitir'
+  const permitirEnSesion = options.permitirEnSesion !== false
   const esProd = (ctx: string | null) => ctx !== null && config.prod.test(ctx)
 
   // Se decide al abrir la sesión; hasta entonces, lo que diga la opción.
@@ -116,14 +120,14 @@ export const register: Register = (on, options) => {
   })
 
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
-    const motivo = await revisar($, String(e.command ?? ''), { config, L, permitirSinRespuesta })
+    const motivo = await revisar($, String(e.command ?? ''), { config, L, permitirSinRespuesta, permitirEnSesion })
     return motivo === undefined ? next(e) : { deny: motivo }
   }).catch(($, e, next) => (next.called ? next(e) : { deny: t(T.error) }))
 
   // En Windows, Claude Code puede usar PowerShell en lugar de Bash.
   on('tool.call', async ($, e, next) => {
     if (String(e.tool) !== 'PowerShell') return next(e)
-    const motivo = await revisar($, String((e as { command?: unknown }).command ?? ''), { config, L, permitirSinRespuesta })
+    const motivo = await revisar($, String((e as { command?: unknown }).command ?? ''), { config, L, permitirSinRespuesta, permitirEnSesion })
     return motivo === undefined ? next(e) : { deny: motivo }
   }).catch(($, e, next) => (next.called || String(e.tool) !== 'PowerShell' ? next(e) : { deny: t(T.error) }))
 
@@ -133,8 +137,10 @@ export const register: Register = (on, options) => {
     if (e.props.hasSurvey) return abajo
     const { Box, Text } = $.ui.resolve(e)
     const es = L === 'es'
-    const lista = await read($, eventos)
+    // Lo que pasó por un permiso de sesión no se detuvo.
+    const lista = (await read($, eventos)).filter(l => l.decision !== 'permitido en sesión')
     const ctx = await read($, kube)
+    const nPermisos = (await read($, permisos)).length
     const cancelados = lista.filter(l => l.decision === 'cancelado' || l.decision === 'sin respuesta').length
     const s = (n: number) => (n === 1 ? '' : 's')
     return (
@@ -152,6 +158,7 @@ export const register: Register = (on, options) => {
                 : `${lista.length} stopped${cancelados > 0 ? ` (${cancelados} cancelled)` : ''}`}
             </Text>
           )}
+          {nPermisos > 0 && <Text color="warning">{es ? ` · ${nPermisos} permitido${s(nPermisos)} en sesión` : ` · ${nPermisos} allowed this session`}</Text>}
           <Text dimColor> · /guardia</Text>
         </Box>
         {abajo}
@@ -170,11 +177,13 @@ export const register: Register = (on, options) => {
     const anchoInfo = ancho >= ANCHO_CON_BANNER ? ancho - 30 : ancho
     const filas = Math.max(3, Math.floor(((e.viewport?.rows ?? 30) - 24) / 3))
     const recientes = lista.slice(-filas).reverse()
-    const ejecutados = lista.filter(l => l.decision === 'ejecutado' || l.decision === 'sin respuesta (permitido)').length
+    const permitidos = await read($, permisos)
+    const ejecutados = lista.filter(l => corrio(l.decision)).length
+    const sinPreguntar = lista.filter(l => l.decision === 'permitido en sesión').length
     const detenidos = lista.length - ejecutados
     const s = (n: number) => (n === 1 ? '' : 's')
     const etiqueta = (d: Evento['decision']) =>
-      d === 'ejecutado' ? (es ? '▶ ejecutado' : '▶ ran') : d === 'cancelado' ? (es ? '■ cancelado' : '■ cancelled') : d === 'sin respuesta' ? (es ? '■ sin respuesta' : '■ no answer') : es ? '▶ sin respuesta (permitido)' : '▶ no answer (allowed)'
+      d === 'ejecutado' ? (es ? '▶ ejecutado' : '▶ ran') : d === 'cancelado' ? (es ? '■ cancelado' : '■ cancelled') : d === 'sin respuesta' ? (es ? '■ sin respuesta' : '■ no answer') : d === 'permitido en sesión' ? (es ? '▶ permitido en sesión' : '▶ allowed this session') : es ? '▶ sin respuesta (permitido)' : '▶ no answer (allowed)'
 
     return (
       <Box flexDirection="column">
@@ -209,7 +218,7 @@ export const register: Register = (on, options) => {
           )}
           <Text>
             <Text dimColor>{es ? 'Esta sesión: ' : 'This session: '}</Text>
-            {es ? `${lista.length} detenido${s(lista.length)} · ` : `${lista.length} stopped · `}
+            {es ? `${lista.length - sinPreguntar} detenido${s(lista.length - sinPreguntar)} · ` : `${lista.length - sinPreguntar} stopped · `}
             <Text color="green">{es ? `${detenidos} cancelado${s(detenidos)}` : `${detenidos} cancelled`}</Text> · <Text color="yellow">{es ? `${ejecutados} ejecutado${s(ejecutados)}` : `${ejecutados} ran`}</Text>
           </Text>
           </Box>
@@ -221,7 +230,7 @@ export const register: Register = (on, options) => {
           {recientes.map((ev, i) => (
             <Box key={`e${lista.length - i}`} flexDirection="column" marginBottom={i < recientes.length - 1 ? 1 : 0}>
               <Text>
-                <Text color={ev.decision === 'ejecutado' || ev.decision === 'sin respuesta (permitido)' ? 'yellow' : 'green'}>{etiqueta(ev.decision)}</Text>
+                <Text color={corrio(ev.decision) ? 'yellow' : 'green'}>{etiqueta(ev.decision)}</Text>
                 <Text dimColor>  {hora(ev.hora, L)} · {ev.categorias.join(', ')}</Text>
               </Text>
               <Text>  $ {recortar(ev.comando, ancho - 4)}</Text>
@@ -230,6 +239,21 @@ export const register: Register = (on, options) => {
           ))}
           {lista.length > recientes.length && <Text dimColor>{es ? `…y ${lista.length - recientes.length} más antiguos` : `…and ${lista.length - recientes.length} older`}</Text>}
         </Box>
+
+        {permitidos.length > 0 && (
+          <Box marginTop={1} flexDirection="column">
+            <Text bold>{es ? 'Permitido en esta sesión' : 'Allowed this session'}</Text>
+            {permitidos.map(p => (
+              <Text key={p.clave}>
+                <Text color="yellow">  {recortar(p.clave, ancho - 12)}</Text>
+                {p.hora > 0 && <Text dimColor>  {hora(p.hora, L)}</Text>}
+              </Text>
+            ))}
+            <Box marginTop={1}>
+              <Button key="quitar" label={es ? 'Quitar permisos' : 'Revoke all'} hotkey="p" onPress={async () => { await update($, permisos, () => []); $.ui.invalidate('ui.render') }} />
+            </Box>
+          </Box>
+        )}
 
         <Box marginTop={1} flexDirection="column">
           <Text bold>{es ? 'Qué vigila' : 'What it watches'}</Text>
@@ -251,7 +275,12 @@ export const register: Register = (on, options) => {
   })
 }
 
-type Ajustes = { config: Config; L: Idioma; permitirSinRespuesta: boolean }
+/** ¿El comando corrió? (Con tu confirmación, con un permiso de sesión, o sin nadie a quien preguntar.) */
+function corrio(d: Evento['decision']): boolean {
+  return d === 'ejecutado' || d === 'permitido en sesión' || d === 'sin respuesta (permitido)'
+}
+
+type Ajustes = { config: Config; L: Idioma; permitirSinRespuesta: boolean; permitirEnSesion: boolean }
 
 /** Revisa un comando de shell; undefined si puede correr, o el motivo para negarlo. */
 async function revisar($: EngineInterface, comando: string, aj: Ajustes): Promise<string | undefined> {
@@ -291,6 +320,16 @@ async function revisar($: EngineInterface, comando: string, aj: Ajustes): Promis
 
   if (riesgos.length === 0) return undefined
 
+  // Ya permitido con "Permitir en esta sesión": corre sin preguntar, y queda en el historial.
+  const claves = clavesDePermiso(comando, riesgos)
+  if (aj.permitirEnSesion) {
+    const ya = new Set((await read($, permisos)).map(p => p.clave))
+    if (claves.every(c => ya.has(c))) {
+      await anotar($, aj, comando, riesgos, 'permitido en sesión')
+      return undefined
+    }
+  }
+
   // Diálogo corto: un motivo por categoría, tres como máximo. El detalle completo queda en /guardia.
   const porCategoria = [...new Map(riesgos.map(r => [r.categoria, r])).values()]
   const resumen = porCategoria
@@ -303,11 +342,12 @@ async function revisar($: EngineInterface, comando: string, aj: Ajustes): Promis
     `  $ ${recortar(comando, 140)}\n` +
     `${resumen}${resto > 0 ? (L === 'es' ? `\n  +${resto} más (en /guardia)` : `\n  +${resto} more (in /guardia)`) : ''}\n` +
     (contexto ? `${t(T.ctxKube)}: ${contexto}\n` : '') +
+    (aj.permitirEnSesion ? alcance(claves, L) + '\n' : '') +
     t(T.pregunta)
 
   let respuesta: string
   try {
-    respuesta = await $.ui.ask(pregunta, { header: t(T.cabecera), options: [t(T.cancelar), t(T.ejecutar)] })
+    respuesta = await $.ui.ask(pregunta, { header: t(T.cabecera), options: aj.permitirEnSesion ? [t(T.cancelar), t(T.ejecutar), t(T.permitirSesion)] : [t(T.cancelar), t(T.ejecutar)] })
   } catch {
     // Diálogo cerrado, o sesión sin nadie a quien preguntar (claude -p, CI).
     if (aj.permitirSinRespuesta) {
@@ -320,6 +360,19 @@ async function revisar($: EngineInterface, comando: string, aj: Ajustes): Promis
   }
 
   const categoria = t(NOMBRE_CATEGORIA[riesgos[0]!.categoria])
+  if (aj.permitirEnSesion && respuesta === t(T.permitirSesion)) {
+    // Si no se puede guardar el permiso, el comando corre igual: el usuario dijo que sí.
+    try {
+      const hora = await $.clock.now().catch(() => 0)
+      await update($, permisos, lista => [...lista.filter(p => !claves.includes(p.clave)), ...claves.map(clave => ({ clave, hora }))])
+    } catch {
+      // nada
+    }
+    await anotar($, aj, comando, riesgos, 'ejecutado')
+    $.ui.toast(L === 'es' ? `🚀 Guardia: permitido en esta sesión (${categoria}). Quítalo en /guardia` : `🚀 Guard: allowed for this session (${categoria}). Revoke it in /guardia`)
+    $.ui.log(`guardia-produccion: permitido en esta sesión → ${claves.join(' · ')}`, { to: 'debug' })
+    return undefined
+  }
   if (respuesta === t(T.ejecutar)) {
     await anotar($, aj, comando, riesgos, 'ejecutado')
     $.ui.toast(L === 'es' ? `🚀 Guardia: ejecutando con tu confirmación (${categoria})` : `🚀 Guard: running with your confirmation (${categoria})`)
@@ -389,6 +442,14 @@ async function ramaActual($: EngineInterface, comando: string): Promise<string |
   } catch {
     return undefined
   }
+}
+
+/** Qué deja de preguntar "Permitir en esta sesión", para el diálogo. */
+function alcance(claves: string[], L: Idioma): string {
+  const push = claves.filter(c => !c.startsWith('$ ')).map(c => c.replace(/^push a /, ''))
+  const exacto = claves.some(c => c.startsWith('$ '))
+  if (L === 'es') return `(Permitir en esta sesión: ${exacto ? 'este mismo comando' : `el push a ${push.join(', ')}`} ya no pregunta hasta que cierres Claude Code)`
+  return `(Allow for this session: ${exacto ? 'this exact command' : `pushing to ${push.join(', ')}`} stops asking until Claude Code closes)`
 }
 
 function negar(riesgos: Riesgo[], porque: string): string {

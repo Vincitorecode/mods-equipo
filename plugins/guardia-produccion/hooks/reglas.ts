@@ -63,6 +63,11 @@ export type Riesgo = {
   categoria: Categoria
   /** Qué haría el comando. */
   motivo: Texto
+  /**
+   * Para "Permitir en esta sesión": lo que se permite cuando el motivo dice
+   * exactamente qué toca (push a main). Sin clave, se permite solo ese comando.
+   */
+  clave?: string
 }
 
 /** Lo que el equipo configuró en el plugin, ya compilado. */
@@ -522,9 +527,21 @@ function revisarPush(push: Push, config: Config, agregar: (r: Riesgo) => void): 
   if (push.usaActual && config.ramaActual !== undefined && config.ramas.test(config.ramaActual)) protegidas.push(config.ramaActual)
   if (push.todas) protegidas.push('--all')
   if (protegidas.length > 0) {
-    const r = [...new Set(protegidas)].join(', ')
-    agregar({ categoria: 'git', motivo: { es: `push directo a una rama protegida (${r})`, en: `direct push to a protected branch (${r})` } })
+    const r = [...new Set(protegidas)].sort().join(', ')
+    agregar({ categoria: 'git', motivo: { es: `push directo a una rama protegida (${r})`, en: `direct push to a protected branch (${r})` }, clave: `push a ${r}` })
   }
+}
+
+// ---- Permitir en esta sesión ----
+
+/**
+ * Lo que queda permitido si el usuario elige "Permitir en esta sesión": la clave
+ * de cada riesgo que la tiene (push a main) y, para los demás, el comando exacto.
+ * Por motivo sería demasiado: "terraform apply / destroy" es un solo motivo.
+ */
+export function clavesDePermiso(comando: string, riesgos: readonly Riesgo[]): string[] {
+  const exacto = `$ ${comando.replace(/\s+/g, ' ').trim()}`
+  return [...new Set(riesgos.map(r => r.clave ?? exacto))]
 }
 
 /** ¿El comando usa kubectl o helm? */

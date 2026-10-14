@@ -2,6 +2,11 @@
 
 ## 2026-10-14
 
+### guardia-produccion 0.6.0
+- **Permitir en esta sesión**: una tercera opción en el diálogo. Ese mismo comando ya no pregunta hasta cerrar Claude Code; el push a una rama protegida se permite por rama (`git push` en `main` y `git push origin main` cuentan igual, `--force` no). Nunca por categoría: aprobar `terraform apply` no deja pasar `terraform destroy`.
+- La línea de estado muestra cuántos permisos hay (`· 1 permitido en sesión`); `/guardia` los lista con *Quitar permisos* (tecla `p`) y el historial marca lo que corrió por un permiso.
+- Opción nueva *Ofrecer "Permitir en esta sesión"* (encendida por defecto) para quien prefiera que pregunte siempre.
+
 ### guardia-produccion 0.5.0
 - **Revisa lo que corren los scripts de npm y make.** `npm run deploy`, `yarn deploy:prod`, `pnpm db:reset`, `bun run x` y `make release` ya no pasan sin revisar: lee el script del `package.json` (con `pre` y `post`) o la receta del `Makefile` (con prerrequisitos y variables como `$(KUBECTL)`), sigue los scripts que llaman a otros, y respeta `--prefix`, `--cwd`, `-C`, `-f` y `cd carpeta &&`. El motivo dice de dónde viene: `npm run deploy → despliegue a producción`.
 - Dentro de esos scripts, `rm -rf` de una carpeta del proyecto (`rm -rf lib && tsc`) cuenta como limpieza; fuera del proyecto se sigue deteniendo.

@@ -61,6 +61,35 @@ Abre una sesión **nueva** de Claude Code (o escribe `/reload-plugins` en una ab
 
 Si al instalar dice `userConfig options not yet set`, no pasa nada: cada mod usa sus valores por defecto hasta que los cambies.
 
+## Actualizar cuando sale una versión nueva
+
+Si ya los tenías instalados, Claude Code **no** baja las versiones nuevas solo. En la terminal (no dentro de Claude Code):
+
+**Opción 1: el mismo comando de instalación.** Detecta que ya los tienes y los actualiza.
+
+```bash
+# macOS / Linux / WSL
+curl -fsSL https://raw.githubusercontent.com/Vincitorecode/mods-equipo/main/instalar.sh | bash
+```
+
+```powershell
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/Vincitorecode/mods-equipo/main/instalar.ps1 | iex
+```
+
+**Opción 2: a mano.** Primero se refresca el marketplace (si te saltas este paso, `update` no ve la versión nueva) y luego cada mod:
+
+```bash
+claude plugin marketplace update mods-equipo
+claude plugin update guardia-produccion@mods-equipo
+claude plugin update detector-secretos@mods-equipo
+claude plugin update contexto-costo@mods-equipo
+```
+
+**Después:** abre una sesión nueva de Claude Code, o escribe `/reload-plugins` en la que tengas abierta. Para revisar qué versión tienes: `claude plugin list` (el campo `Version`) y compárala con el [CHANGELOG](CHANGELOG.md).
+
+**Si clonaste el repo para usarlo con `--plugin-dir`** (por ejemplo, para hacer cambios), actualiza con `git pull` dentro de la carpeta del repo; la sesión recarga el mod sola.
+
 ## Problemas comunes · Troubleshooting
 
 | Lo que ves | Qué hacer |
@@ -79,7 +108,7 @@ Si nada de esto lo resuelve, abre un *issue* con la salida de `claude --version`
 
 ## Actualizar, desactivar o desinstalar
 
-- **Actualizar:** vuelve a correr el instalador, o `claude plugin update guardia-produccion@mods-equipo` (igual para los otros) y luego `/reload-plugins` en la sesión abierta.
+- **Actualizar:** ve [Actualizar cuando sale una versión nueva](#actualizar-cuando-sale-una-versión-nueva).
 - **Desactivar uno:** `/plugin` → pestaña *Installed* → desactívalo.
 - **Desinstalar:** `claude plugin uninstall guardia-produccion@mods-equipo`.
 - **Desactivar todos por una sesión:** `claude --safe-mode`.
@@ -92,7 +121,7 @@ Cada mod se configura en `/plugin` → *Installed* → el mod → configurar. To
 
 ## guardia-produccion
 
-Antes de que Claude ejecute un comando de Bash (o de PowerShell en Windows), lo revisa. Si es riesgoso, aparece el diálogo de Claude Code con el comando, el motivo y dos opciones: **Cancelar** (predeterminado) o **Ejecutar de todas formas**. Funciona en cualquier modo de permisos, **incluso con auto-aceptar activado**, que es justo cuando más se necesita.
+Antes de que Claude ejecute un comando de Bash (o de PowerShell en Windows), lo revisa. Si es riesgoso, aparece el diálogo de Claude Code con el comando, el motivo y tres opciones: **Cancelar** (predeterminado), **Ejecutar de todas formas** o **Permitir en esta sesión**. Funciona en cualquier modo de permisos, **incluso con auto-aceptar activado**, que es justo cuando más se necesita.
 
 Detiene, entre otros:
 
@@ -111,6 +140,8 @@ Detiene, entre otros:
 
 También revisa lo que va dentro de `bash -c "…"`, `eval`, `ssh servidor "…"` y `$(…)`. **No** se detiene por texto: mensajes de commit, `echo "…"`, heredocs que escriben un archivo, `--help` ni `--dry-run`.
 
+**Permitir en esta sesión** ejecuta el comando y no vuelve a preguntar por **ese mismo comando** hasta que cierres Claude Code. Para el push a una rama protegida el permiso es por rama: si permites `git push` estando en `main`, `git push origin main` tampoco pregunta, pero `git push --force` sí. No se permite por categoría (aprobar `terraform apply` no deja pasar `terraform destroy`). Lo permitido se ve en la línea de estado y en `/guardia`, donde lo puedes quitar con el botón *Quitar permisos*.
+
 Si cancelas, Claude recibe el motivo y la instrucción de no reintentar ni buscar otra vía, sino preguntarte.
 
 **Interfaz:**
@@ -127,6 +158,7 @@ Si cancelas, Claude recibe el motivo y la instrucción de no reintentar ni busca
 | Comandos extra a vigilar | — | Regex separadas por `;;`, ej. `./scripts/deploy.sh;;make release` |
 | Comandos que nunca se detienen | — | Para tus falsos positivos, ej. `rm -rf \./generated;;./deploy-staging.sh` |
 | Categorías apagadas | — | Separadas por comas: `infraestructura, kubernetes, git, bd, migracion, nube, despliegue, publicacion, archivos, docker, produccion` |
+| Ofrecer "Permitir en esta sesión" | sí | Apágalo para que pregunte siempre |
 | Sin nadie a quien preguntar | `bloquear` | En `claude -p` o CI: `bloquear` (más seguro) o `permitir` (ejecuta y lo anota) |
 
 ## detector-secretos
@@ -263,5 +295,18 @@ claude plugin install contexto-costo@mods-equipo
 ```
 
 Then start a new Claude Code session (or run `/reload-plugins`). `/plugin install` doesn't work inside the desktop app's Code tab: install from a terminal, and the mods load in the app too. See the [troubleshooting table](#problemas-comunes--troubleshooting) above for common errors.
+
+### Update
+
+Installed mods don't update on their own. Run the install command again, or by hand (refresh the marketplace first, or `update` won't see the new version):
+
+```bash
+claude plugin marketplace update mods-equipo
+claude plugin update guardia-produccion@mods-equipo
+claude plugin update detector-secretos@mods-equipo
+claude plugin update contexto-costo@mods-equipo
+```
+
+Then start a new session or run `/reload-plugins`. `claude plugin list` shows the installed `Version`. If you cloned the repo to use it with `--plugin-dir`, `git pull` is enough.
 
 Configure each mod in `/plugin` → *Installed* → the mod. MIT licensed.
